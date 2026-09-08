@@ -5,3 +5,13 @@ artifacts/
 .DS_Store
 *.xcuserstate
 __pycache__/
+
+# Local profiles, planning, and desktop review evidence
+/.local/
+/PLAN.md
+/DELIVERY-PLAN.md
+/AEROKIT-EVALUATION.md
+/IMPLEMENTATION.md
+/docs/DESKTOP-TESTING.md
+/docs/INTEGRATION-DECISIONS.md
+/docs/UI-REVIEW.md
