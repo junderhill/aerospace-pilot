@@ -23,12 +23,33 @@ import PilotOverview
     var showingSafariDecision = false
     var captureBusy = false
     var captureDuration: TimeInterval?
+    let screenRecordingPermission: ScreenRecordingPermission
     @ObservationIgnored private var applyTask: Task<Void, Never>?
     @ObservationIgnored private var refreshingHealth = false
     @ObservationIgnored private let client = AeroSpaceClient()
     @ObservationIgnored private let store = ProfileStore(directory: JSONFiles.applicationSupport.appendingPathComponent("Profiles"))
     @ObservationIgnored private let tracker = VersionTracker(url: JSONFiles.applicationSupport.appendingPathComponent("versions.json"))
     @ObservationIgnored private let capture = WindowCaptureService()
+
+    init(screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission()) {
+        self.screenRecordingPermission = screenRecordingPermission
+    }
+
+    func refreshScreenRecordingPermission() {
+        screenRecordingPermission.refresh()
+        if !screenRecordingPermission.isGranted {
+            capture.clear()
+            thumbnails = []
+            previewWindowsByID = [:]
+            captureDuration = nil
+        }
+    }
+
+    func enableScreenRecording() {
+        guard !busy, !captureBusy else { return }
+        screenRecordingPermission.enable()
+        refreshScreenRecordingPermission()
+    }
 
     var selectedProfile: Profile? { profiles.first { $0.id == selectedProfileID } }
     var canExport: Bool { !busy && selectedProfile != nil }
@@ -43,6 +64,7 @@ import PilotOverview
         await refreshHealth()
     }
     func refreshHealth() async {
+        refreshScreenRecordingPermission()
         guard !busy, !refreshingHealth else { return }
         refreshingHealth = true
         defer { refreshingHealth = false }
@@ -135,12 +157,17 @@ import PilotOverview
     }
     func capturePreviews() async {
         guard !captureBusy, !busy else { return }
+        refreshScreenRecordingPermission()
+        guard screenRecordingPermission.isGranted else { return }
         captureBusy = true
         defer { captureBusy = false }
         do {
             let snapshot = try await client.snapshot()
             let start = Date()
-            thumbnails = await capture.capture(snapshot.windows)
+            let captured = await capture.capture(snapshot.windows)
+            refreshScreenRecordingPermission()
+            guard screenRecordingPermission.isGranted else { return }
+            thumbnails = captured
             previewWindowsByID = Dictionary(
                 snapshot.windows.map { ($0.id, $0) },
                 uniquingKeysWith: { first, _ in first }

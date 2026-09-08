@@ -9,6 +9,10 @@ struct ProfileDetailView: View {
             VStack(alignment: .leading, spacing: 24) {
                 ConnectionStatusView(health: model.health)
 
+                if !model.screenRecordingPermission.isGranted {
+                    ScreenRecordingPermissionView(model: model)
+                }
+
                 if let profile = model.selectedProfile {
                     ProfileOverviewView(model: model, profile: profile)
 

@@ -36,7 +36,11 @@ The monitor policy follows AeroSpace's existing workspace mapping. An absent pre
 
 `dist/pilot health`, `dist/pilot doctor`, `dist/pilot work`, `dist/pilot validate FILE.json`, and `dist/pilot preview [FILE.json]` are read-only. Health distinguishes missing executable, unavailable/unresponsive server, malformed responses and CLI/server mismatch. Versions/hashes are retained; changes persist across launches and untested pairs stay visibly untested. Health refreshes on startup, activation, wake, every 30 seconds while the app is open, and before apply.
 
-Use the app's **Thumbnail feasibility preview** to request images. The capture module uses public ScreenCaptureKit, excludes Pilot's own window, never switches workspaces, and labels images fresh, cached with age, or unavailable. It neither requests permission automatically nor captures in the background. `dist/pilot capture --output DIRECTORY [--bundle-id ID]` saves explicit capture evidence. Real inactive-workspace image quality still needs the dedicated desktop gate.
+The app checks Screen Recording access at startup and when it becomes active. If access is missing, click **Allow Screen Recording** and enable **AeroSpace Pilot** in System Settings → Privacy & Security → Screen Recording (called **Screen & System Audio Recording** on some macOS versions). Reopen Pilot if macOS requests it or access remains unavailable. The app rechecks access when you return from Settings; profiles remain usable without this permission.
+
+Development builds are ad-hoc signed, so rebuilding can invalidate an earlier permission grant. If Pilot is already enabled but still reports missing access after reopening, remove the old entry and add the current `dist/AeroSpace Pilot.app` again. **Show App in Finder** reveals the current app copy.
+
+Use **Window previews → Capture Window Previews** to request images once access is available. The capture module uses public ScreenCaptureKit, excludes Pilot's own window, never switches workspaces, and labels images fresh, cached with age, or unavailable. Permission is requested only after clicking the permission button; there is no background capture. `dist/pilot capture --output DIRECTORY [--bundle-id ID]` saves explicit capture evidence and needs permission for its own process. Real inactive-workspace image quality still needs the dedicated desktop gate.
 
 The keyboard overview is Phase 5. Profiles run without importing the overview module; the capture module does not depend on profiles.
 

@@ -20,7 +20,7 @@ struct WindowPreviewsView: View {
                         ) {
                             Task { await model.capturePreviews() }
                         }
-                        .disabled(model.captureBusy || model.busy)
+                        .disabled(model.captureBusy || model.busy || !model.screenRecordingPermission.isGranted)
 
                         if model.captureBusy {
                             ProgressView()
