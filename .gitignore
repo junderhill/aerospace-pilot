@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+dist/
+artifacts/
+.DS_Store
+*.xcuserstate
+__pycache__/
