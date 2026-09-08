@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "testedPairs": [],
+  "requiredCapabilities": [
+    "windows-json",
+    "workspaces-json",
+    "monitors-json"
+  ]
+}

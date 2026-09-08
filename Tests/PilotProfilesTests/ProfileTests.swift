@@ -1,0 +1,249 @@
+import Foundation
+import Testing
+import PilotCore
+import PilotProfiles
+import PilotTestSupport
+
+@MainActor struct ProfileTests {
+    func window(_ id: Int = 1, bundle: String = "test.editor", title: String = "Document", workspace: String = "start") -> DesktopWindow {
+        DesktopWindow(id: id, bundleID: bundle, appName: bundle, title: title, workspace: workspace)
+    }
+    func profile(_ assignments: [Assignment]? = nil) -> Profile {
+        Profile(name: "Test", assignments: assignments ?? [Assignment(id: "editor", bundleID: "test.editor", appName: "Editor", workspace: "T")])
+    }
+    func engine(_ desktop: MemoryDesktop, _ apps: MemoryApplications, timeout: Double = 0.2) -> RestoreEngine {
+        RestoreEngine(desktop: desktop, apps: apps, windowTimeout: timeout, pollInterval: .milliseconds(5), preflight: {})
+    }
+    @Test func workUsesBoilerplateAppsAndNoContentRecipes() throws {
+        let work = try Profile.work()
+        #expect(work.assignments.map(\.workspace) == ["1", "2", "3"])
+        #expect(work.assignments.map(\.bundleID) == ["com.apple.Safari", "com.microsoft.VSCode", "com.apple.iCal"])
+        #expect(work.assignments.allSatisfy { $0.safariRecipe == nil })
+        #expect(work.protectedBundleIDs.contains("com.openai.codex"))
+    }
+    @Test func exportImportPreservesRecipesAndProtections() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileStore(directory: directory.appendingPathComponent("profiles"))
+        var work = try Profile.work()
+        work.assignments[0].safariRecipe = SafariRecipe(logicalWindow: "Work", urls: ["https://example.com/"])
+        work.cleanup = .init(mode: .preview, scope: .selectedWorkspaces)
+        let export = directory.appendingPathComponent("Work.json")
+        try store.export(work, to: export)
+        let imported = try store.importProfile(from: export)
+        #expect(imported == work)
+        #expect(try store.list() == [work])
+        #expect(!String(decoding: try Data(contentsOf: export), as: UTF8.self).contains("window-id"))
+    }
+    @Test func malformedUnknownAndConflictingImportsCannotPartiallyMutate() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileStore(directory: directory)
+        let work = try Profile.work()
+        let destination = try store.save(work)
+        let initial = try Data(contentsOf: destination)
+        #expect(throws: (any Error).self) { try ProfileStore.decode(Data("broken".utf8)) }
+        #expect(throws: PilotError.self) { try ProfileStore.decode(Data("{\"schemaVersion\":99}".utf8)) }
+        var conflict = work
+        conflict.assignments[0].bundleID = "com.openai.codex"
+        #expect(throws: PilotError.self) { try store.save(conflict) }
+        #expect(try Data(contentsOf: destination) == initial)
+        conflict = work
+        conflict.protectedBundleIDs = []
+        #expect(throws: PilotError.self) { try store.save(conflict) }
+        #expect(throws: PilotError.self) { try work.validate(globalProtections: ["com.apple.Safari"]) }
+    }
+    @Test(arguments: ["javascript:alert(1)", "file:///tmp/private", "https://user:password@example.com", "not a url"])
+    func unsafeRecipeIsRejected(url: String) throws {
+        var work = try Profile.work()
+        work.assignments[0].safariRecipe = .init(logicalWindow: "Work", urls: [url])
+        #expect(throws: PilotError.self) { try work.validate() }
+    }
+    @Test func coldWarmAndRepeatWorkRestoreHasNoDuplicatesAndProtectsClosedChatGPT() async throws {
+        let work = try Profile.work()
+        let desktop = MemoryDesktop()
+        let apps = MemoryApplications(desktop: desktop, installed: Set(work.assignments.map(\.bundleID)))
+        let restorer = engine(desktop, apps)
+        let first = try await restorer.apply(RestorePlanner().plan(work, snapshot: desktop.snapshot()))
+        #expect(first.allPlacementsVerified)
+        #expect(apps.opened.count == 3 && !apps.running.contains("com.openai.codex"))
+        let snapshot = try await desktop.snapshot()
+        let again = try RestorePlanner().plan(work, snapshot: snapshot)
+        let second = try await restorer.apply(again, safariConsent: .init(choice: .moveAll, snapshot: snapshot))
+        #expect(second.allPlacementsVerified)
+        #expect(apps.opened.count == 3)
+        #expect(try await desktop.snapshot().windows.count == 3)
+        #expect(await desktop.moves.count == 3)
+    }
+    @Test func protectedOpenAppAndUnrelatedWindowsRemainUnchanged() async throws {
+        let protected = window(9, bundle: "com.openai.codex", title: "Important content", workspace: "P")
+        let unrelated = window(10, bundle: "other.app", workspace: "X")
+        let desktop = MemoryDesktop(windows: [window(), protected, unrelated])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        apps.running = ["com.openai.codex"]
+        var p = profile()
+        p.cleanup = .init(mode: .automatic, scope: .entireDesktop)
+        let plan = try await RestorePlanner().plan(p, snapshot: desktop.snapshot())
+        #expect(plan.futureClosureCandidates == [unrelated])
+        _ = try await engine(desktop, apps).apply(plan)
+        let after = try await desktop.snapshot()
+        #expect(after.windows.contains(protected) && after.windows.contains(unrelated))
+        #expect(apps.opened.isEmpty && apps.closed.isEmpty && apps.running.contains("com.openai.codex"))
+    }
+    @Test func runningAppWithoutWindowReopensAndWaitsForDelayedWindow() async throws {
+        let desktop = MemoryDesktop()
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        apps.running = ["test.editor"]; apps.delaySnapshots = 3
+        let result = try await engine(desktop, apps).apply(RestorePlanner().plan(profile(), snapshot: desktop.snapshot()))
+        #expect(result.allPlacementsVerified && apps.opened == ["test.editor"])
+    }
+    @Test func launchFailureAndNoWindowTimeoutAreVisible() async throws {
+        for fails in [true, false] {
+            let desktop = MemoryDesktop()
+            let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+            apps.createsWindows = false
+            if fails { apps.launchFails = ["test.editor"] }
+            let report = try await engine(desktop, apps, timeout: 0.02).apply(RestorePlanner().plan(profile(), snapshot: desktop.snapshot()))
+            #expect(report.outcomes[0].status == .failed)
+            #expect(!report.allPlacementsVerified)
+        }
+    }
+    @Test func relaunchUsesSavedTitlesNotRuntimeIDs() async throws {
+        let desktop = MemoryDesktop(windows: [window(1, title: "One", workspace: "1"), window(2, title: "Two", workspace: "2")])
+        let store = ProfileStore(directory: URL(fileURLWithPath: "/unused"))
+        let saved = try await store.capture(name: "Documents", snapshot: desktop.snapshot())
+        let decoded = try ProfileStore.decode(JSONFiles.encode(saved))
+        await desktop.replaceWindows([window(101, title: "Two"), window(102, title: "One")])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        let report = try await engine(desktop, apps).apply(RestorePlanner().plan(decoded, snapshot: desktop.snapshot()))
+        #expect(report.allPlacementsVerified)
+        let windows = try await desktop.snapshot().windows
+        #expect(windows.first { $0.id == 101 }?.workspace == "2")
+        #expect(windows.first { $0.id == 102 }?.workspace == "1")
+        #expect(apps.opened.isEmpty)
+    }
+    @Test func ambiguityNeverMovesWithoutExplicitResolution() async throws {
+        let desktop = MemoryDesktop(windows: [window(1), window(2)])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        let plan = try await RestorePlanner().plan(profile(), snapshot: desktop.snapshot())
+        #expect(plan.items[0].action == .resolve)
+        let restorer = engine(desktop, apps)
+        let unresolved = try await restorer.apply(plan)
+        #expect(unresolved.outcomes[0].status == .unresolved && apps.opened.isEmpty)
+        #expect(await desktop.moves.isEmpty)
+        let resolved = try await restorer.apply(plan, resolutions: [.init(assignmentID: "editor", window: window(2))])
+        #expect(resolved.allPlacementsVerified)
+        #expect(try await desktop.snapshot().windows.first { $0.id == 1 }?.workspace == "start")
+    }
+    @Test func stalePreviewStopsBeforeAnyMutation() async throws {
+        let desktop = MemoryDesktop(windows: [window()])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        let plan = try await RestorePlanner().plan(profile(), snapshot: desktop.snapshot())
+        await desktop.replaceWindows([window(2)])
+        await #expect(throws: PilotError.self) { try await engine(desktop, apps).apply(plan) }
+        #expect(await desktop.moves.isEmpty)
+        #expect(apps.opened.isEmpty)
+    }
+    @Test(arguments: [SafariChoice.moveAll, .leaveInPlace, .cancel, .closeAll])
+    func safariChoiceCoversEveryWorkspace(choice: SafariChoice) async throws {
+        let safari = Protection.safari
+        let original = [window(1, bundle: safari, workspace: "other"), window(2, bundle: safari, workspace: "private")]
+        let desktop = MemoryDesktop(windows: original)
+        let apps = MemoryApplications(desktop: desktop, installed: [safari])
+        let p = profile([Assignment(id: "safari", bundleID: safari, appName: "Safari", workspace: "S")])
+        let snapshot = try await desktop.snapshot()
+        let report = try await engine(desktop, apps).apply(RestorePlanner().plan(p, snapshot: snapshot), safariConsent: .init(choice: choice, snapshot: snapshot))
+        let after = try await desktop.snapshot().windows
+        switch choice {
+        case .moveAll:
+            #expect(report.allPlacementsVerified && after.count == 2 && after.allSatisfy { $0.workspace == "S" })
+            #expect(apps.closed.isEmpty && apps.opened.isEmpty)
+        case .leaveInPlace:
+            #expect(report.outcomes[0].status == .skipped && after == original)
+        case .cancel:
+            #expect(report.outcomes[0].status == .cancelled && after == original)
+        case .closeAll:
+            #expect(report.allPlacementsVerified && apps.closed == [1, 2] && after.count == 1)
+            #expect(after[0].id != 1 && after[0].id != 2 && after[0].workspace == "S")
+        }
+    }
+    @Test func safariMissingConsentOrRefusedCloseLeavesFurtherWorkUntouched() async throws {
+        let desktop = MemoryDesktop(windows: [window(1, bundle: Protection.safari), window(2, bundle: Protection.safari)])
+        let apps = MemoryApplications(desktop: desktop, installed: [Protection.safari])
+        let p = profile([Assignment(id: "safari", bundleID: Protection.safari, appName: "Safari", workspace: "S")])
+        let snapshot = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(p, snapshot: snapshot)
+        let noConsent = try await engine(desktop, apps).apply(plan)
+        #expect(noConsent.outcomes[0].status == .unresolved && apps.closed.isEmpty)
+        apps.closeRefused = true
+        let refused = try await engine(desktop, apps, timeout: 0.02).apply(plan, safariConsent: .init(choice: .closeAll, snapshot: snapshot))
+        #expect(refused.outcomes[0].status == .failed)
+        #expect(apps.closed == [1] && apps.opened.isEmpty)
+        #expect(await desktop.moves.isEmpty)
+    }
+    @Test func recipesAreStoredButCannotMutateSafariInPhase3() async throws {
+        let desktop = MemoryDesktop(windows: [window(1, bundle: Protection.safari)])
+        let apps = MemoryApplications(desktop: desktop, installed: [Protection.safari])
+        let p = profile([Assignment(bundleID: Protection.safari, appName: "Safari", workspace: "S", safariRecipe: .init(logicalWindow: "Work", urls: ["https://example.com"]))])
+        let snapshot = try await desktop.snapshot()
+        let report = try await engine(desktop, apps).apply(RestorePlanner().plan(p, snapshot: snapshot), safariConsent: .init(choice: .closeAll, snapshot: snapshot))
+        #expect(report.outcomes[0].status == .unresolved && apps.closed.isEmpty && apps.opened.isEmpty)
+    }
+    @Test func placementRefusalDisappearanceAndMissingAppRemainFailures() async throws {
+        for scenario in ["refuse", "disappear", "missing"] {
+            let desktop = MemoryDesktop(windows: scenario == "missing" ? [] : [window()])
+            if scenario == "refuse" { await desktop.refuseMoves() }
+            if scenario == "disappear" { await desktop.disappearOnMove(1) }
+            let apps = MemoryApplications(desktop: desktop, installed: [])
+            let report = try await engine(desktop, apps).apply(RestorePlanner().plan(profile(), snapshot: desktop.snapshot()))
+            #expect(report.outcomes[0].status == .failed && !report.allPlacementsVerified)
+        }
+    }
+    @Test func missingMonitorUsesCurrentAeroSpaceMapping() async throws {
+        let desktop = MemoryDesktop(windows: [window()])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        var p = profile()
+        p.assignments[0].preferredMonitorName = "Disconnected display"
+        let plan = try await RestorePlanner().plan(p, snapshot: desktop.snapshot())
+        #expect(plan.warnings.contains { $0.contains("absent") })
+        #expect(try await engine(desktop, apps).apply(plan).allPlacementsVerified)
+    }
+    @Test func preflightFailureBlocksAllActions() async throws {
+        let desktop = MemoryDesktop(windows: [window()])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        let restorer = RestoreEngine(desktop: desktop, apps: apps, preflight: { throw PilotError.unavailable("Version changed") })
+        let plan = try await RestorePlanner().plan(profile(), snapshot: desktop.snapshot())
+        await #expect(throws: PilotError.self) { try await restorer.apply(plan) }
+        #expect(await desktop.moves.isEmpty)
+    }
+    @Test func cancellationStopsRemainingAssignments() async throws {
+        let desktop = MemoryDesktop()
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor", "test.other"])
+        apps.createsWindows = false
+        let p = profile([
+            Assignment(id: "editor", bundleID: "test.editor", appName: "Editor", workspace: "T"),
+            Assignment(id: "other", bundleID: "test.other", appName: "Other", workspace: "A")
+        ])
+        let plan = try await RestorePlanner().plan(p, snapshot: desktop.snapshot())
+        let restorer = engine(desktop, apps, timeout: 3)
+        let task = Task { try await restorer.apply(plan) }
+        while apps.opened.isEmpty { await Task.yield() }
+        task.cancel()
+        let report = try await task.value
+        #expect(report.outcomes.allSatisfy { $0.status == .cancelled })
+        #expect(apps.opened == ["test.editor"])
+        #expect(await desktop.moves.isEmpty)
+    }
+    @Test func safariConsentCannotBeReusedForChangedContent() async throws {
+        let desktop = MemoryDesktop(windows: [window(bundle: Protection.safari, title: "Original")])
+        let apps = MemoryApplications(desktop: desktop, installed: [Protection.safari])
+        let old = try await desktop.snapshot()
+        let consent = SafariConsent(choice: .closeAll, snapshot: old)
+        await desktop.replaceWindows([window(bundle: Protection.safari, title: "Changed")])
+        let p = profile([Assignment(bundleID: Protection.safari, appName: "Safari", workspace: "S")])
+        let plan = try await RestorePlanner().plan(p, snapshot: desktop.snapshot())
+        let report = try await engine(desktop, apps).apply(plan, safariConsent: consent)
+        #expect(report.outcomes[0].status == .unresolved && apps.closed.isEmpty && apps.opened.isEmpty)
+        #expect(await desktop.moves.isEmpty)
+    }
+}

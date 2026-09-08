@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "decisions": {
+    "packaging": "One native app with independent profile and capture modules, plus a read-only diagnostics CLI.",
+    "integration": "Documented AeroSpace CLI; no socket or upstream changes.",
+    "capture": "Original public ScreenCaptureKit path; AeroKit build evaluated, no code vendored. Desktop feasibility remains a required gate.",
+    "protections": "Immutable ChatGPT minimum plus global/profile additions. Every mutation checks protection.",
+    "monitorPolicy": "Follow AeroSpace's current workspace-to-display mapping; report absent preferred displays. Do not move entire workspaces.",
+    "phase3Cleanup": "Inactive, with keep/managedApplications in the Work seed. Final Phase 4 cleanup policy remains undecided.",
+    "windowIdentity": "Bundle identity plus optional user-confirmed exact title; ambiguous or changed matches require a current explicit selection.",
+    "support": "macOS 14 / Swift 6 build floor; desktop certification pending."
+  },
+  "checks": [
+    {"id":"build", "phase":1, "environment":"macos", "command":["./script/build.sh"], "acceptance":["P1.1", "P1.2", "P1.5"], "timeout":300},
+    {"id":"deterministic", "phase":1, "environment":"macos", "command":["./script/test.sh"], "requires":["build"], "acceptance":["P1.5", "P2.1", "P2.2", "P3.1", "P3.2", "P3.3", "P3.4", "P3.5"], "timeout":300},
+    {"id":"script-contracts", "phase":1, "environment":"macos", "command":["./script/test.sh", "--suite", "contracts"], "acceptance":["P1.2", "P1.4"], "timeout":120},
+    {"id":"fresh-checkout", "phase":1, "environment":"macos", "command":["python3", "script/fresh_checkout.py"], "requires":["build"], "acceptance":["P1.1", "P1.2", "P1.5"], "timeout":600},
+    {"id":"bundle-launch", "phase":1, "environment":"desktop", "command":["python3", "script/desktop_tests.py", "--check", "bundle-launch"], "requires":["build"], "acceptance":["P1.3"], "timeout":30},
+    {"id":"hosted-ci", "phase":1, "environment":"github-actions", "command":["python3", "script/ci_evidence.py"], "acceptance":["P1.5"], "timeout":10},
+    {"id":"live-health", "phase":2, "environment":"macos", "command":["python3", "script/desktop_tests.py", "--check", "live-health"], "requires":["build"], "acceptance":["P2.3"], "timeout":30},
+    {"id":"controlled-windows", "phase":2, "environment":"desktop", "command":["python3", "script/desktop_tests.py", "--check", "controlled-windows"], "requires":["live-health"], "acceptance":["P2.3"], "timeout":120},
+    {"id":"capture-three-workspaces", "phase":2, "environment":"capture-desktop", "command":["python3", "script/desktop_tests.py", "--check", "capture-three-workspaces"], "requires":["controlled-windows"], "acceptance":["P2.4"], "timeout":120},
+    {"id":"capture-conditions", "phase":2, "environment":"two-display-capture-desktop", "command":["python3", "script/desktop_tests.py", "--check", "capture-conditions"], "requires":["capture-three-workspaces"], "acceptance":["P2.5"], "timeout":120},
+    {"id":"work-placement", "phase":3, "environment":"work-desktop", "command":["python3", "script/desktop_tests.py", "--check", "work-placement"], "requires":["live-health"], "acceptance":["P3.2", "P3.4", "P3.5"], "timeout":180},
+    {"id":"profile-relaunch", "phase":3, "environment":"desktop", "command":["python3", "script/desktop_tests.py", "--check", "profile-relaunch"], "requires":["controlled-windows"], "acceptance":["P3.3"], "timeout":120}
+  ]
+}

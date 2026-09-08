@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "C467E618-76DE-4BCA-8177-A34E342A6414",
+  "name": "Work",
+  "assignments": [
+    {
+      "id": "safari",
+      "bundleID": "com.apple.Safari",
+      "appName": "Safari",
+      "workspace": "1"
+    },
+    {
+      "id": "vscode",
+      "bundleID": "com.microsoft.VSCode",
+      "appName": "Visual Studio Code",
+      "workspace": "2"
+    },
+    {
+      "id": "calendar",
+      "bundleID": "com.apple.iCal",
+      "appName": "Calendar",
+      "workspace": "3"
+    }
+  ],
+  "protectedBundleIDs": [
+    "com.openai.chat",
+    "com.openai.codex"
+  ],
+  "cleanup": {
+    "mode": "keep",
+    "scope": "managedApplications"
+  },
+  "monitorPolicy": "followAeroSpace"
+}

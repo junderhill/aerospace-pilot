@@ -1,0 +1,26 @@
+name: macOS deterministic checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  deterministic:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./script/bootstrap.sh
+      - run: ./script/build.sh
+      - run: ./script/test.sh
+        env:
+          PILOT_AEROSPACE_PATH: /not-installed/aerospace
+      - run: ./script/test.sh --suite contracts
+      - name: Record cumulative gate (desktop remains blocked on hosted CI)
+        run: |
+          set +e
+          ./script/verify.sh --phase 3
+          result=$?
+          if [ "$result" -ne 0 ] && [ "$result" -ne 3 ]; then exit "$result"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification
+          path: artifacts/verification
