@@ -42,7 +42,17 @@ Development builds are ad-hoc signed, so rebuilding can invalidate an earlier pe
 
 Use **Window previews → Capture Window Previews** to request images once access is available. The capture module uses public ScreenCaptureKit, excludes Pilot's own window, never switches workspaces, and labels images fresh, cached with age, or unavailable. Permission is requested only after clicking the permission button; there is no background capture. `dist/pilot capture --output DIRECTORY [--bundle-id ID]` saves explicit capture evidence and needs permission for its own process. Real inactive-workspace image quality still needs the dedicated desktop gate.
 
-The keyboard overview is Phase 5. Profiles run without importing the overview module; the capture module does not depend on profiles.
+## Workspace overview
+
+With Pilot running, press **Control–Option–Space** from any app, or click **Workspaces** in Pilot's toolbar. The shortcut toggles a full-display overview on the display under the pointer. It shows all AeroSpace workspaces, including empty ones, with their identifiers, monitor names, and app/window titles. Window images load progressively when Screen Recording is available; names and navigation work without it.
+
+1. Type a workspace identifier, app name, or window title to filter the cards.
+2. Click a workspace heading to switch to it, or a window preview to focus that window. Up/Down selects a workspace; Return switches to it.
+3. Press Escape, click Close, or press the shortcut again to dismiss. Opening and dismissing the overview does not move or close any windows.
+
+The shortcut is active only while Pilot is running. If another app has reserved it, Pilot shows a warning and the toolbar/menu action remains available. The overview uses one display at a time and labels workspaces from other displays; it does not create a native macOS full-screen Space. Refresh reloads the desktop snapshot. A changed or closed selection is reported instead of blindly switching to a stale window ID. Images stay in memory and are discarded when the overview closes. Real inactive-workspace image quality still depends on ScreenCaptureKit availability and the pending desktop capture matrix.
+
+Profiles run without importing the overview module; the capture module does not depend on profiles.
 
 ## Verification and remaining work
 

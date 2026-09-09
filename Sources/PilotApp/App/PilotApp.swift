@@ -5,11 +5,13 @@ import PilotCore
 @main struct AeroSpacePilotApp: App {
     @NSApplicationDelegateAdaptor(PilotAppDelegate.self) private var delegate
     @State private var model = PilotModel()
+    @State private var overview = WorkspaceOverviewController()
     var body: some Scene {
         WindowGroup("AeroSpace Pilot", id: "main") {
-            ContentView(model: model)
+            ContentView(model: model, overview: overview)
                 .frame(minWidth: 720, minHeight: 540)
                 .task {
+                    overview.start()
                     await model.refresh()
                     while !Task.isCancelled {
                         do { try await Task.sleep(for: .seconds(30)) } catch { return }
@@ -22,9 +24,19 @@ import PilotCore
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     Task { await model.refreshHealth() }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+                    overview.dismiss()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    overview.stop()
+                }
         }
         .defaultSize(width: 900, height: 680)
         .commands {
+            CommandMenu("Navigate") {
+                Button("Workspace Overview") { overview.toggle() }
+                    .keyboardShortcut(" ", modifiers: [.control, .option])
+            }
             CommandGroup(after: .newItem) {
                 Button("Import Profile…") { model.importProfile() }.keyboardShortcut("o")
                     .disabled(model.busy)

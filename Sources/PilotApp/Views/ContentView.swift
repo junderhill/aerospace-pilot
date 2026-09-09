@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Bindable var model: PilotModel
+    let overview: WorkspaceOverviewController
     @State private var saveName = "Desktop"
     @State private var showingSave = false
 
@@ -10,7 +11,7 @@ struct ContentView: View {
             ProfileSidebarView(model: model, showingSave: $showingSave)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
-            ProfileDetailView(model: model)
+            ProfileDetailView(model: model, overview: overview)
         }
         .navigationSplitViewStyle(.balanced)
         .alert("Save current desktop", isPresented: $showingSave) {

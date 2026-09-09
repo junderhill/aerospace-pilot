@@ -35,11 +35,15 @@ public struct Thumbnail: Sendable {
 
     /// Public ScreenCaptureKit only: never switch/focus workspaces to acquire a preview.
     /// No permission request, login item, disk cache, deprecated capture API or background timer.
-    public func capture(_ windows: [DesktopWindow]) async -> [Thumbnail] {
+    public func capture(_ windows: [DesktopWindow], onThumbnail: (@MainActor (Thumbnail) -> Void)? = nil) async -> [Thumbnail] {
         let windows = windows.filter { $0.bundleID != Protection.pilot }
         guard Self.hasPermission else {
             clear() // Do not keep showing stale captured content after permission is revoked.
-            return windows.map { unavailable($0.id, "Screen Recording permission is unavailable.") }
+            return windows.map {
+                let result = unavailable($0.id, "Screen Recording permission is unavailable.")
+                onThumbnail?(result)
+                return result
+            }
         }
         let liveIDs = Set(windows.map(\.id))
         cache = cache.filter { liveIDs.contains($0.key) && ($0.value.thumbnail.age() ?? .infinity) <= maximumAge }
@@ -47,12 +51,16 @@ public struct Thumbnail: Sendable {
             let content = try await timedShareableContent().content
             let byID = Dictionary(content.windows.map { (Int($0.windowID), $0) }, uniquingKeysWith: { first, _ in first })
             var results: [Thumbnail] = []
+            func append(_ thumbnail: Thumbnail) {
+                results.append(thumbnail)
+                onThumbnail?(thumbnail)
+            }
             for (index, window) in windows.enumerated() {
-                if Task.isCancelled { results.append(unavailable(window.id, "Capture cancelled.")); continue }
-                guard index < maximumWindows else { results.append(unavailable(window.id, "Capture batch limit reached.")); continue }
+                if Task.isCancelled { break }
+                guard index < maximumWindows else { append(unavailable(window.id, "Capture batch limit reached.")); continue }
                 guard let source = byID[window.id], source.owningApplication?.bundleIdentifier == window.bundleID,
                       source.frame.width > 1, source.frame.height > 1 else {
-                    results.append(fallback(window, reason: "Window unavailable, minimized, or no longer shareable.")); continue
+                    append(fallback(window, reason: "Window unavailable, minimized, or no longer shareable.")); continue
                 }
                 do {
                     let configuration = SCStreamConfiguration()
@@ -71,11 +79,18 @@ public struct Thumbnail: Sendable {
                     if cache.count > maximumWindows, let oldest = cache.min(by: {
                         ($0.value.thumbnail.capturedAt ?? .distantPast) < ($1.value.thumbnail.capturedAt ?? .distantPast)
                     }) { cache[oldest.key] = nil }
-                    results.append(thumbnail)
-                } catch { results.append(fallback(window, reason: error.localizedDescription)) }
+                    append(thumbnail)
+                } catch { append(fallback(window, reason: error.localizedDescription)) }
             }
             return results
-        } catch { return windows.map { fallback($0, reason: error.localizedDescription) } }
+        } catch {
+            guard !Task.isCancelled else { return [] }
+            return windows.map {
+                let result = fallback($0, reason: error.localizedDescription)
+                onThumbnail?(result)
+                return result
+            }
+        }
     }
     private func unavailable(_ id: Int, _ reason: String) -> Thumbnail {
         Thumbnail(windowID: id, state: .unavailable, png: nil, capturedAt: nil, reason: reason)

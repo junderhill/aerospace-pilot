@@ -3,11 +3,17 @@ import PilotProfiles
 
 struct ProfileDetailView: View {
     @Bindable var model: PilotModel
+    let overview: WorkspaceOverviewController
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 ConnectionStatusView(health: model.health)
+
+                if let error = overview.shortcutError {
+                    Label(error, systemImage: "keyboard")
+                        .foregroundStyle(.orange)
+                }
 
                 if !model.screenRecordingPermission.isGranted {
                     ScreenRecordingPermissionView(model: model)
@@ -49,6 +55,8 @@ struct ProfileDetailView: View {
         }
         .navigationTitle("AeroSpace Pilot")
         .toolbar {
+            Button("Workspaces", systemImage: "rectangle.3.group") { overview.toggle() }
+                .help("Show all workspaces (\(OverviewShortcut.label))")
             Button("Refresh", systemImage: "arrow.clockwise") {
                 Task { await model.refreshHealth() }
             }
