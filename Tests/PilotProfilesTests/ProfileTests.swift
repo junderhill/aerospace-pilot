@@ -11,15 +11,17 @@ import PilotTestSupport
     func profile(_ assignments: [Assignment]? = nil) -> Profile {
         Profile(name: "Test", assignments: assignments ?? [Assignment(id: "editor", bundleID: "test.editor", appName: "Editor", workspace: "T")])
     }
-    func engine(_ desktop: MemoryDesktop, _ apps: MemoryApplications, timeout: Double = 0.2) -> RestoreEngine {
-        RestoreEngine(desktop: desktop, apps: apps, windowTimeout: timeout, pollInterval: .milliseconds(5), preflight: {})
+    func engine(_ desktop: MemoryDesktop, _ apps: MemoryApplications, timeout: Double = 0.2,
+                globalProtections: Set<String> = []) -> RestoreEngine {
+        RestoreEngine(desktop: desktop, apps: apps, globalProtections: globalProtections,
+                      windowTimeout: timeout, pollInterval: .milliseconds(5), preflight: {})
     }
     @Test func workUsesBoilerplateAppsAndNoContentRecipes() throws {
         let work = try Profile.work()
         #expect(work.assignments.map(\.workspace) == ["1", "2", "3"])
         #expect(work.assignments.map(\.bundleID) == ["com.apple.Safari", "com.microsoft.VSCode", "com.apple.iCal"])
         #expect(work.assignments.allSatisfy { $0.safariRecipe == nil })
-        #expect(work.protectedBundleIDs.contains("com.openai.codex"))
+        #expect(work.protectedBundleIDs.isEmpty)
     }
     @Test func exportImportPreservesRecipesAndProtections() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -35,6 +37,42 @@ import PilotTestSupport
         #expect(try store.list() == [work])
         #expect(!String(decoding: try Data(contentsOf: export), as: UTF8.self).contains("window-id"))
     }
+    @Test func savedLayoutCanBeRenamedAndDeleted() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileStore(directory: directory)
+        let original = profile()
+        let saved = try store.save(original)
+        let renamed = try store.rename(original, to: "Documents")
+        #expect(renamed.name == "Documents")
+        #expect(try store.list().map(\.name) == ["Documents"])
+        try store.delete(renamed)
+        #expect(try store.list().isEmpty)
+        #expect(FileManager.default.fileExists(atPath: saved.path) == false)
+    }
+    @Test func captureUsesConfiguredExclusionsAndCanAllowPreviouslyExcludedApps() throws {
+        let snapshot = DesktopSnapshot(windows: [
+            window(1, bundle: "com.openai.codex", title: "ChatGPT"),
+            window(2, bundle: "test.editor", title: "Document")
+        ])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let excluded = try ProfileStore(directory: directory, globalProtections: ["com.openai.codex"])
+            .capture(name: "Excluded", snapshot: snapshot)
+        #expect(excluded.assignments.map(\.bundleID) == ["test.editor"])
+        let included = try ProfileStore(directory: directory, globalProtections: [])
+            .capture(name: "Included", snapshot: snapshot)
+        #expect(included.assignments.map(\.bundleID) == ["com.openai.codex", "test.editor"])
+    }
+    @Test func restorePlanSkipsConfiguredExcludedAssignments() throws {
+        let assignment = Assignment(id: "chatgpt", bundleID: "com.openai.codex", appName: "ChatGPT", workspace: "C")
+        let plan = try RestorePlanner(globalProtections: ["com.openai.codex"]).plan(
+            Profile(name: "Test", assignments: [assignment]),
+            snapshot: DesktopSnapshot(windows: [window(1, bundle: "com.openai.codex", title: "ChatGPT")])
+        )
+        #expect(plan.items.first?.action == .skipped)
+        #expect(plan.items.first?.detail.contains("excluded") == true)
+    }
     @Test func malformedUnknownAndConflictingImportsCannotPartiallyMutate() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -45,13 +83,12 @@ import PilotTestSupport
         #expect(throws: (any Error).self) { try ProfileStore.decode(Data("broken".utf8)) }
         #expect(throws: PilotError.self) { try ProfileStore.decode(Data("{\"schemaVersion\":99}".utf8)) }
         var conflict = work
-        conflict.assignments[0].bundleID = "com.openai.codex"
+        conflict.assignments[0].bundleID = Protection.pilot
         #expect(throws: PilotError.self) { try store.save(conflict) }
         #expect(try Data(contentsOf: destination) == initial)
         conflict = work
-        conflict.protectedBundleIDs = []
-        #expect(throws: PilotError.self) { try store.save(conflict) }
-        #expect(throws: PilotError.self) { try work.validate(globalProtections: ["com.apple.Safari"]) }
+        #expect(try store.save(conflict) == destination)
+        try work.validate(globalProtections: ["com.apple.Safari"])
     }
     @Test(arguments: ["javascript:alert(1)", "file:///tmp/private", "https://user:password@example.com", "not a url"])
     func unsafeRecipeIsRejected(url: String) throws {
@@ -63,12 +100,13 @@ import PilotTestSupport
         let work = try Profile.work()
         let desktop = MemoryDesktop()
         let apps = MemoryApplications(desktop: desktop, installed: Set(work.assignments.map(\.bundleID)))
-        let restorer = engine(desktop, apps)
-        let first = try await restorer.apply(RestorePlanner().plan(work, snapshot: desktop.snapshot()))
+        let exclusions: Set<String> = ["com.openai.codex"]
+        let restorer = engine(desktop, apps, globalProtections: exclusions)
+        let first = try await restorer.apply(RestorePlanner(globalProtections: exclusions).plan(work, snapshot: desktop.snapshot()))
         #expect(first.allPlacementsVerified)
         #expect(apps.opened.count == 3 && !apps.running.contains("com.openai.codex"))
         let snapshot = try await desktop.snapshot()
-        let again = try RestorePlanner().plan(work, snapshot: snapshot)
+        let again = try RestorePlanner(globalProtections: exclusions).plan(work, snapshot: snapshot)
         let second = try await restorer.apply(again, safariConsent: .init(choice: .moveAll, snapshot: snapshot))
         #expect(second.allPlacementsVerified)
         #expect(apps.opened.count == 3)
@@ -83,9 +121,10 @@ import PilotTestSupport
         apps.running = ["com.openai.codex"]
         var p = profile()
         p.cleanup = .init(mode: .automatic, scope: .entireDesktop)
-        let plan = try await RestorePlanner().plan(p, snapshot: desktop.snapshot())
+        let exclusions: Set<String> = ["com.openai.codex"]
+        let plan = try await RestorePlanner(globalProtections: exclusions).plan(p, snapshot: desktop.snapshot())
         #expect(plan.futureClosureCandidates == [unrelated])
-        _ = try await engine(desktop, apps).apply(plan)
+        _ = try await engine(desktop, apps, globalProtections: exclusions).apply(plan)
         let after = try await desktop.snapshot()
         #expect(after.windows.contains(protected) && after.windows.contains(unrelated))
         #expect(apps.opened.isEmpty && apps.closed.isEmpty && apps.running.contains("com.openai.codex"))

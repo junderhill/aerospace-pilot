@@ -61,13 +61,12 @@ public enum PilotError: Error, LocalizedError, Equatable, Sendable {
 }
 
 public enum Protection {
-    // Required protected application identifiers.
-    // These are immutable minimum protections; profile/global additions cannot remove them.
-    public static let required: Set<String> = ["com.openai.codex", "com.openai.chat"]
-    public static let safari = "com.apple.Safari"
     public static let pilot = "uk.jason.aerospace-pilot"
+    /// The app itself is always excluded so it cannot manage its own windows.
+    public static let immutable: Set<String> = [pilot]
+    public static let safari = "com.apple.Safari"
     public static func requireMutable(_ bundleID: String, additional: Set<String> = []) throws {
-        guard !required.union(additional).contains(bundleID) else {
+        guard !immutable.union(additional).contains(bundleID) else {
             throw PilotError.invalid("\(bundleID) is protected; its running state, windows and content must remain unchanged.")
         }
     }

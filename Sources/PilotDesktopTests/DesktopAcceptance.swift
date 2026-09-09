@@ -181,25 +181,26 @@ private struct Blocked: Error { let reason: String }
             throw Blocked(reason: "Work acceptance requires installed app \(assignment.bundleID).")
         }
         let initial = try await client.snapshot()
-        let protectedWindows = initial.windows.filter { Protection.required.contains($0.bundleID) }
-        let running = Dictionary(uniqueKeysWithValues: Protection.required.map { ($0, apps.isRunning(bundleID: $0)) })
+        let configuredExclusions: Set<String> = ["com.openai.codex", "com.openai.chat"]
+        let protectedWindows = initial.windows.filter { configuredExclusions.contains($0.bundleID) }
+        let running = Dictionary(uniqueKeysWithValues: configuredExclusions.map { ($0, apps.isRunning(bundleID: $0)) })
         let checker = HealthChecker(client: client, manifest: try .bundled())
-        let engine = RestoreEngine(desktop: client, apps: apps, preflight: {
+        let engine = RestoreEngine(desktop: client, apps: apps, globalProtections: configuredExclusions, preflight: {
             let report = await checker.check()
             guard report.canRestore else { throw PilotError.unavailable(report.message) }
         })
         var firstIDs: Set<Int>?
         for _ in 0..<2 {
             let snapshot = try await client.snapshot()
-            let report = try await engine.apply(RestorePlanner().plan(profile, snapshot: snapshot), safariConsent: .init(choice: .moveAll, snapshot: snapshot))
+            let report = try await engine.apply(RestorePlanner(globalProtections: configuredExclusions).plan(profile, snapshot: snapshot), safariConsent: .init(choice: .moveAll, snapshot: snapshot))
             try require(report.allPlacementsVerified, "Real Work placement is incomplete: \(report.summary)")
             let after = try await client.snapshot()
-            try require(after.windows.filter { Protection.required.contains($0.bundleID) } == protectedWindows, "Protected app windows changed.")
-            try require(Protection.required.allSatisfy { apps.isRunning(bundleID: $0) == running[$0] }, "Protected app running state changed.")
+            try require(after.windows.filter { configuredExclusions.contains($0.bundleID) } == protectedWindows, "Configured excluded app windows changed.")
+            try require(configuredExclusions.allSatisfy { apps.isRunning(bundleID: $0) == running[$0] }, "Configured excluded app running state changed.")
             let ids = Set(after.windows.filter { window in profile.assignments.contains { $0.bundleID == window.bundleID } }.map(\.id))
             if let firstIDs { try require(firstIDs == ids, "Repeat apply changed Work window count or identities.") }
             firstIDs = ids
         }
-        print("PASS: real Work placements and repeat apply. ChatGPT window/running-state invariants held. Safari used explicitly authorized move-all.")
+        print("PASS: real Work placements and repeat apply. Excluded-app window/running-state invariants held. Safari used explicitly authorized move-all.")
     }
 }

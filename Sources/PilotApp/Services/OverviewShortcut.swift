@@ -1,13 +1,33 @@
 import Carbon
 
+struct QuickViewShortcut: Codable, Equatable, Sendable {
+    var keyCode: UInt32
+    var modifiers: UInt32
+    var keyName: String
+
+    static let defaultConfiguration = QuickViewShortcut(
+        keyCode: UInt32(kVK_Space),
+        modifiers: UInt32(controlKey | optionKey),
+        keyName: "Space"
+    )
+
+    var displayLabel: String {
+        var label = ""
+        if modifiers & UInt32(controlKey) != 0 { label += "⌃" }
+        if modifiers & UInt32(optionKey) != 0 { label += "⌥" }
+        if modifiers & UInt32(shiftKey) != 0 { label += "⇧" }
+        if modifiers & UInt32(cmdKey) != 0 { label += "⌘" }
+        return label + keyName
+    }
+}
+
 /// Registers a single shortcut, without monitoring other keyboard input.
 @MainActor final class OverviewShortcut {
-    static let label = "⌃⌥Space"
     private var hotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
     private var action: (() -> Void)?
 
-    func start(action: @escaping () -> Void) -> String? {
+    func start(configuration: QuickViewShortcut = .defaultConfiguration, action: @escaping () -> Void) -> String? {
         guard hotKey == nil else { return nil }
         self.action = action
         var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -24,14 +44,20 @@ import Carbon
             return noErr
         }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &handler)
         guard status == noErr else { return "Could not register the overview shortcut (\(status)). Use the Workspaces button." }
-        let registration = RegisterEventHotKey(UInt32(kVK_Space), UInt32(controlKey | optionKey),
+        let registration = RegisterEventHotKey(configuration.keyCode, configuration.modifiers,
                                               EventHotKeyID(signature: 0x50494C54, id: 1), GetApplicationEventTarget(),
                                               OptionBits(kEventHotKeyExclusive), &hotKey)
         if registration != noErr {
             stop()
-            return "Control–Option–Space is unavailable or already in use. Use the Workspaces button."
+            return "\(configuration.displayLabel) is unavailable or already in use. Use the Workspaces button."
         }
         return nil
+    }
+
+    func restart(configuration: QuickViewShortcut) -> String? {
+        guard let action else { return nil }
+        stop()
+        return start(configuration: configuration, action: action)
     }
 
     func stop() {

@@ -8,7 +8,7 @@ An independent macOS companion for AeroSpace. This implementation covers the Pha
 
 1. Install Xcode with Swift 6+ and select its developer directory. The package targets macOS 14+.
 2. Run `./script/bootstrap.sh`. It checks prerequisites and resolves the dependency-free Swift package; repeat runs are safe.
-3. Run `./script/build_and_run.sh --verify`, or use the project's **Run** action. The app stays under `dist/`; nothing is installed or registered at login.
+3. Run `./script/build_and_run.sh --verify`, or use the project's **Run** action. The app starts in the menu bar; choose **Open AeroSpace Pilot** from its menu when you need the main window. The app stays under `dist/`; nothing is installed or registered at login.
 4. Run `./script/test.sh` and `./script/test.sh --suite contracts` for deterministic tests.
 5. Run `./script/verify.sh --phase 3` for cumulative gates and evidence under `artifacts/verification/`.
 
@@ -18,11 +18,17 @@ Scripts resolve their own project root, so they work from a different directory 
 
 ## Use profiles
 
+Open the main window from the **AeroSpace Pilot** menu-bar item, then:
+
 1. Select **Work** and click **Preview Restore**.
 2. Resolve any ambiguous windows using the preview's window picker.
 3. Click **Apply Preview**, choose how to handle **all** existing Safari windows, then confirm **Apply Work**. The dialog defaults to leaving existing Safari content in place. **Cancel** returns to the preview without restoring any apps.
 
-Work is a boilerplate example: Safari → 1, Visual Studio Code → 2, and Calendar → 3. Install the example apps or import a profile suited to your setup before applying it. The example contains no personal URLs, document titles, or monitor preferences. `com.openai.codex` and `com.openai.chat` are immutable protections.
+Work is a boilerplate example: Safari → 1, Visual Studio Code → 2, and Calendar → 3. Install the example apps or import a profile suited to your setup before applying it. The example contains no personal URLs, document titles, or monitor preferences. Configure excluded applications in **Settings**; Pilot itself remains protected automatically.
+
+Use the profile sidebar's context menu or **Rename Selected…** and **Delete Selected** controls to manage saved layouts. The Work example is a starter layout and can be renamed or deleted like any other saved layout.
+
+Open **Settings** from the gear button in the toolbar (or the app menu) to choose excluded applications and record a new Quick View shortcut. Exclusions apply both when saving a layout and when restoring one; excluded assignments are shown as **Leave unchanged** in the restore preview.
 
 Profiles are human-readable JSON. **Import**, **Export**, and **Save Desktop** support portable configuration. Saved profiles and version observations live in `~/Library/Application Support/AeroSpace Pilot/`. Imports fully validate before an atomic write. Runtime window IDs are never stored in profiles. Current windows are reused; missing windows are opened through Launch Services. Multiple windows require distinct exact-title identities or an explicit selection, and changed previews require a refresh.
 
@@ -44,7 +50,7 @@ Use **Window previews → Capture Window Previews** to request images once acces
 
 ## Workspace overview
 
-With Pilot running, press **Control–Option–Space** from any app, or click **Workspaces** in Pilot's toolbar. The shortcut toggles a full-display overview on the display under the pointer. It shows AeroSpace workspaces, including empty ones by default, with their identifiers, monitor names, and app/window titles. Window images load progressively when Screen Recording is available; names and navigation work without it.
+With Pilot running, press the configured Quick View shortcut from any app, or click **Workspaces** in Pilot's toolbar. The default is **Control–Option–Space**; change it in **Settings**. The shortcut toggles a full-display overview on the display under the pointer. It shows AeroSpace workspaces, including empty ones by default, with their identifiers, monitor names, and app/window titles. Window images load progressively when Screen Recording is available; names and navigation work without it.
 
 1. Type a workspace identifier, app name, or window title to filter the cards.
 2. Click a workspace heading to switch to it, or a window preview to focus that window. Arrow keys move through the rendered card grid; when monitor grouping is enabled, monitor sections are stacked in monitor order. Return switches to it.

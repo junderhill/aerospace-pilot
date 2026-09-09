@@ -22,10 +22,7 @@
       "workspace": "3"
     }
   ],
-  "protectedBundleIDs": [
-    "com.openai.chat",
-    "com.openai.codex"
-  ],
+  "protectedBundleIDs": [],
   "cleanup": {
     "mode": "keep",
     "scope": "managedApplications"

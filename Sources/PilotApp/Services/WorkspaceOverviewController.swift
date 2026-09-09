@@ -4,7 +4,8 @@ import Observation
 import PilotCore
 
 @MainActor @Observable final class WorkspaceOverviewController {
-    let model = WorkspaceOverviewModel()
+    let model: WorkspaceOverviewModel
+    let settings: PilotSettings
     private(set) var shortcutError: String?
     @ObservationIgnored private let shortcut = OverviewShortcut()
     @ObservationIgnored private let permission = ScreenRecordingPermission()
@@ -13,8 +14,19 @@ import PilotCore
     @ObservationIgnored private var navigationTask: Task<Void, Never>?
     @ObservationIgnored private var presentationID = UUID()
 
+    init(settings: PilotSettings = PilotSettings()) {
+        self.settings = settings
+        self.model = WorkspaceOverviewModel()
+    }
+
+    var shortcutLabel: String { settings.quickViewShortcut.displayLabel }
+
     func start() {
-        shortcutError = shortcut.start { [weak self] in self?.toggle() }
+        shortcutError = shortcut.start(configuration: settings.quickViewShortcut) { [weak self] in self?.toggle() }
+    }
+
+    func restartShortcut() {
+        shortcutError = shortcut.restart(configuration: settings.quickViewShortcut)
     }
 
     func toggle() {

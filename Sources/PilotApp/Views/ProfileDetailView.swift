@@ -56,7 +56,10 @@ struct ProfileDetailView: View {
         .navigationTitle("AeroSpace Pilot")
         .toolbar {
             Button("Workspaces", systemImage: "rectangle.3.group") { overview.toggle() }
-                .help("Show all workspaces (\(OverviewShortcut.label))")
+                .help("Show all workspaces (\(overview.shortcutLabel))")
+            SettingsLink {
+                Label("Settings", systemImage: "gear")
+            }
             Button("Refresh", systemImage: "arrow.clockwise") {
                 Task { await model.refreshHealth() }
             }
@@ -134,7 +137,7 @@ private struct ProfileOverviewView: View {
                 }
             }
 
-            Label("ChatGPT is protected and stays where it is.", systemImage: "shield.checkered")
+            Label("Excluded applications stay where they are. Change this in Settings.", systemImage: "shield.checkered")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

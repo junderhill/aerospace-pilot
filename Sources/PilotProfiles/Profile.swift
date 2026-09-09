@@ -48,7 +48,7 @@ public struct Profile: Codable, Equatable, Sendable, Identifiable {
     public var cleanup: CleanupSettings
     public var monitorPolicy: MonitorPolicy
     public init(id: UUID = UUID(), name: String, assignments: [Assignment],
-                protectedBundleIDs: [String] = Protection.required.sorted(), cleanup: CleanupSettings = .init()) {
+                protectedBundleIDs: [String] = [], cleanup: CleanupSettings = .init()) {
         schemaVersion = 1; self.id = id; self.name = name; self.assignments = assignments
         self.protectedBundleIDs = protectedBundleIDs; self.cleanup = cleanup; monitorPolicy = .followAeroSpace
     }
@@ -57,9 +57,6 @@ public struct Profile: Codable, Equatable, Sendable, Identifiable {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200, !assignments.isEmpty else {
             throw PilotError.invalid("A profile needs a name (1–200 characters) and at least one assignment.")
         }
-        guard Protection.required.isSubset(of: Set(protectedBundleIDs)) else {
-            throw PilotError.invalid("Profile must carry all required ChatGPT protections.")
-        }
         guard Set(assignments.map(\.id)).count == assignments.count else { throw PilotError.invalid("Assignment identifiers must be unique.") }
         for assignment in assignments {
             guard !assignment.id.isEmpty, assignment.bundleID.contains("."), !assignment.bundleID.contains(where: \.isWhitespace),
@@ -67,7 +64,7 @@ public struct Profile: Codable, Equatable, Sendable, Identifiable {
                   !assignment.workspace.contains(where: { $0.isNewline || $0.asciiValue == 0 }) else {
                 throw PilotError.invalid("Invalid app identity or workspace in assignment \(assignment.id).")
             }
-            try Protection.requireMutable(assignment.bundleID, additional: Set(protectedBundleIDs).union(globalProtections))
+            try Protection.requireMutable(assignment.bundleID, additional: Set(protectedBundleIDs))
             if let identity = assignment.identity, identity.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw PilotError.invalid("Exact-title identity cannot be empty.")
             }

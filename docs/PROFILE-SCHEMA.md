@@ -6,7 +6,7 @@ The bundled example is `Sources/PilotProfiles/Resources/Work.json`. Files are UT
 | --- | --- |
 | `id`, `name` | Stable profile UUID and display name. Internal filenames use UUIDs, never user-entered names. |
 | `assignments` | Unique assignment ID, verified `bundleID`, `appName`, `workspace`, optional exact-title `identity`, `safariRecipe`, and `preferredMonitorName`. |
-| `protectedBundleIDs` | Must include `com.openai.codex` and `com.openai.chat`. Global additions also apply and cannot be overridden by import. |
+| `protectedBundleIDs` | Optional profile-specific protections. The Settings exclusions are applied at runtime and cannot be overridden by a profile import. |
 | `cleanup` | `mode`: `keep`, `preview`, or `automatic`; `scope`: `managedApplications`, `selectedWorkspaces`, or `entireDesktop`. Preserved but inactive in Phase 3. |
 | `monitorPolicy` | `followAeroSpace`: use the workspace's current display mapping and report an absent preferred monitor. |
 
@@ -14,7 +14,7 @@ An identity is `{ "kind": "exactTitle", "value": "My document" }`. The exact tit
 
 A Safari recipe is `{ "logicalWindow": "Work", "urls": ["https://example.com/"] }`. URLs must be distinct HTTP(S) addresses without embedded credentials. Phase 3 validates and preserves the recipe; applying it leaves Safari unresolved and untouched until Phase 4 defines and implements content semantics.
 
-Multiple assignments for one app require distinct, nonempty exact titles. Safari's existing-content policy has one destination per profile. Protections reject a conflicting assignment even when cleanup is set to keep.
+Multiple assignments for one app require distinct, nonempty exact titles. Safari's existing-content policy has one destination per profile. Profile-specific protections reject a conflicting assignment even when cleanup is set to keep. Settings exclusions skip matching assignments during restore and leave those applications unchanged.
 
 Execution rechecks health, validates the profile, compares the desktop to the preview, and rechecks window identity and protections at action boundaries. It opens/reopens apps only if no window exists, waits for actual windows, resolves a unique identity, moves, and verifies placement. Completion checks run again after the last assignment. Outcomes distinguish completed placement, intentional skip, cancellation, failure and unresolved work. A skip is never reported as a verified placement.
 

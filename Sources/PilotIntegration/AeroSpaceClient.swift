@@ -5,8 +5,14 @@ public struct AeroSpaceClient: DesktopClient {
     public let executable: URL
     public let runner: any ProcessRunning
     public let timeout: TimeInterval
-    public init(executable: URL = Self.resolveExecutable(), runner: any ProcessRunning = ProcessRunner(), timeout: TimeInterval = 5) {
-        self.executable = executable; self.runner = runner; self.timeout = timeout
+    public let globalProtections: Set<String>
+    public init(
+        executable: URL = Self.resolveExecutable(),
+        runner: any ProcessRunning = ProcessRunner(),
+        timeout: TimeInterval = 5,
+        globalProtections: Set<String> = []
+    ) {
+        self.executable = executable; self.runner = runner; self.timeout = timeout; self.globalProtections = globalProtections
     }
     public static func resolveExecutable(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let override = environment["PILOT_AEROSPACE_PATH"], !override.isEmpty {
@@ -53,7 +59,7 @@ public struct AeroSpaceClient: DesktopClient {
         // Protection also holds at the command boundary, independently of the planner.
         let current = try await snapshot()
         guard let window = current.windows.first(where: { $0.id == windowID }) else { throw PilotError.stale("Window \(windowID) disappeared.") }
-        try Protection.requireMutable(window.bundleID)
+        try Protection.requireMutable(window.bundleID, additional: globalProtections)
         try await command(["move-node-to-workspace", "--window-id", String(windowID), "--", workspace])
     }
     public func focus(windowID: Int) async throws {
@@ -61,12 +67,12 @@ public struct AeroSpaceClient: DesktopClient {
         try await command(["focus", "--window-id", String(windowID)])
     }
     public func close(windowID: Int, expectedBundleID: String) async throws {
-        try Protection.requireMutable(expectedBundleID)
+        try Protection.requireMutable(expectedBundleID, additional: globalProtections)
         let snapshot = try await snapshot()
         guard let window = snapshot.windows.first(where: { $0.id == windowID }), window.bundleID == expectedBundleID else {
             throw PilotError.stale("Window changed before close; preview again.")
         }
-        try Protection.requireMutable(window.bundleID)
+        try Protection.requireMutable(window.bundleID, additional: globalProtections)
         // Normal AX close; no quit, force-quit, save-dialog dismissal or AppleScript tab manipulation.
         try await command(["close", "--window-id", String(windowID)])
     }

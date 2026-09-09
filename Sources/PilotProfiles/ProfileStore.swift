@@ -27,6 +27,17 @@ public struct ProfileStore: Sendable {
         try JSONFiles.write(profile, to: url)
         return url
     }
+    @discardableResult public func rename(_ profile: Profile, to name: String) throws -> Profile {
+        var renamed = profile
+        renamed.name = name
+        try save(renamed)
+        return renamed
+    }
+    public func delete(_ profile: Profile) throws {
+        let url = directory.appendingPathComponent(profile.id.uuidString).appendingPathExtension("json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
+    }
     public func export(_ profile: Profile, to url: URL) throws {
         try profile.validate(globalProtections: globalProtections)
         try JSONFiles.write(profile, to: url)
@@ -37,7 +48,7 @@ public struct ProfileStore: Sendable {
         return profile
     }
     public func capture(name: String, snapshot: DesktopSnapshot) throws -> Profile {
-        let excluded = Protection.required.union(globalProtections).union([Protection.pilot])
+        let excluded = Protection.immutable.union(globalProtections)
         var windows = snapshot.windows.filter { !excluded.contains($0.bundleID) }.sorted { $0.id < $1.id }
         let safari = windows.filter { $0.bundleID == Protection.safari }
         if safari.count > 1 {
@@ -52,7 +63,9 @@ public struct ProfileStore: Sendable {
                        identity: (groups[window.bundleID]?.count ?? 0) > 1 ? WindowIdentity(exactTitle: window.title) : nil,
                        preferredMonitorName: snapshot.monitors.first { $0.id == window.monitorID }?.name)
         }
-        let profile = Profile(name: name, assignments: assignments, protectedBundleIDs: Protection.required.union(globalProtections).sorted())
+        // Global exclusions are runtime settings. Do not bake them into the saved layout,
+        // so a user can remove an exclusion later without having to recapture the layout.
+        let profile = Profile(name: name, assignments: assignments, protectedBundleIDs: Protection.immutable.sorted())
         try profile.validate(globalProtections: globalProtections)
         return profile
     }

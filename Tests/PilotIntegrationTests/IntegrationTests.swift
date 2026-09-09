@@ -5,8 +5,8 @@ import PilotIntegration
 import PilotTestSupport
 
 struct IntegrationTests {
-    func client(_ runner: FakeProcessRunner) -> AeroSpaceClient {
-        AeroSpaceClient(executable: URL(fileURLWithPath: "/fake/aerospace"), runner: runner)
+    func client(_ runner: FakeProcessRunner, globalProtections: Set<String> = []) -> AeroSpaceClient {
+        AeroSpaceClient(executable: URL(fileURLWithPath: "/fake/aerospace"), runner: runner, globalProtections: globalProtections)
     }
     @Test func snapshotUsesExplicitFieldsAndAcceptsAdditionalFields() async throws {
         let runner = FakeProcessRunner.healthy()
@@ -101,8 +101,9 @@ struct IntegrationTests {
     @Test func commandBoundaryRefusesProtectedMovesAndCloses() async throws {
         let runner = FakeProcessRunner.healthy()
         await runner.set("list-windows", reply: .result(.init(stdout: "[{\"window-id\":17,\"app-bundle-id\":\"com.openai.codex\",\"app-name\":\"ChatGPT\",\"window-title\":\"Private\",\"workspace\":\"S\",\"monitor-id\":1}]")))
-        await #expect(throws: PilotError.self) { try await client(runner).move(windowID: 17, to: "T") }
-        await #expect(throws: PilotError.self) { try await client(runner).close(windowID: 17, expectedBundleID: "com.openai.codex") }
+        let configured = client(runner, globalProtections: ["com.openai.codex"])
+        await #expect(throws: PilotError.self) { try await configured.move(windowID: 17, to: "T") }
+        await #expect(throws: PilotError.self) { try await configured.close(windowID: 17, expectedBundleID: "com.openai.codex") }
         let calls = await runner.calls
         #expect(!calls.contains { ["close", "move-node-to-workspace"].contains($0.first ?? "") })
     }

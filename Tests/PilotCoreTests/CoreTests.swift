@@ -3,9 +3,10 @@ import Testing
 import PilotCore
 
 struct CoreTests {
-    @Test func requiredProtectionIncludesInstalledChatGPT() throws {
-        #expect(throws: PilotError.self) { try Protection.requireMutable("com.openai.codex") }
-        #expect(throws: PilotError.self) { try Protection.requireMutable("com.openai.chat") }
+    @Test func onlyImmutableAndExplicitProtectionsAreBlocked() throws {
+        try Protection.requireMutable("com.openai.codex")
+        #expect(throws: PilotError.self) { try Protection.requireMutable(Protection.pilot) }
+        #expect(throws: PilotError.self) { try Protection.requireMutable("com.openai.codex", additional: ["com.openai.codex"]) }
         #expect(throws: PilotError.self) { try Protection.requireMutable("com.example.private", additional: ["com.example.private"]) }
         try Protection.requireMutable("com.apple.Safari")
     }

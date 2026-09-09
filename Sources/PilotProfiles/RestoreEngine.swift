@@ -55,7 +55,7 @@ public struct WindowResolution: Sendable {
         defer { isApplying = false }
         try await preflight() // Recheck versions/capabilities immediately before every apply.
         let fresh = try await desktop.snapshot()
-        let relevant = Set(preview.profile.assignments.map(\.bundleID))
+        let relevant = Set(preview.items.filter { $0.action != .skipped }.map { $0.assignment.bundleID })
         func relevantWindows(_ snapshot: DesktopSnapshot) -> [DesktopWindow] {
             snapshot.windows.filter { relevant.contains($0.bundleID) }.sorted { $0.id < $1.id }
         }
@@ -67,7 +67,7 @@ public struct WindowResolution: Sendable {
               Set(resolutions.map { $0.window.id }).count == resolutions.count else {
             throw PilotError.invalid("Each explicit resolution must select a distinct window and assignment.")
         }
-        let protected = Protection.required.union(preview.profile.protectedBundleIDs).union(globalProtections)
+        let protected = Protection.immutable.union(preview.profile.protectedBundleIDs).union(globalProtections)
         var outcomes: [RestoreOutcome] = []
         var consumed = Set<Int>()
         for item in preview.items {
@@ -77,6 +77,10 @@ public struct WindowResolution: Sendable {
                                status: status, detail: detail, windowIDs: ids)
             }
             if Task.isCancelled { outcomes.append(outcome(.cancelled, "Restore cancelled before this assignment.")); continue }
+            if item.action == .skipped {
+                outcomes.append(outcome(.skipped, item.detail))
+                continue
+            }
             do {
                 try Protection.requireMutable(assignment.bundleID, additional: protected)
                 if assignment.safariRecipe != nil {

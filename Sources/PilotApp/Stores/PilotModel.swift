@@ -24,15 +24,27 @@ import PilotOverview
     var captureBusy = false
     var captureDuration: TimeInterval?
     let screenRecordingPermission: ScreenRecordingPermission
+    let settings: PilotSettings
     @ObservationIgnored private var applyTask: Task<Void, Never>?
     @ObservationIgnored private var refreshingHealth = false
-    @ObservationIgnored private let client = AeroSpaceClient()
-    @ObservationIgnored private let store = ProfileStore(directory: JSONFiles.applicationSupport.appendingPathComponent("Profiles"))
+    @ObservationIgnored private var client: AeroSpaceClient {
+        AeroSpaceClient(globalProtections: settings.effectiveExcludedBundleIDs)
+    }
+    @ObservationIgnored private var store: ProfileStore {
+        ProfileStore(
+            directory: JSONFiles.applicationSupport.appendingPathComponent("Profiles"),
+            globalProtections: settings.effectiveExcludedBundleIDs
+        )
+    }
     @ObservationIgnored private let tracker = VersionTracker(url: JSONFiles.applicationSupport.appendingPathComponent("versions.json"))
     @ObservationIgnored private let capture = WindowCaptureService()
 
-    init(screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission()) {
+    init(
+        screenRecordingPermission: ScreenRecordingPermission = ScreenRecordingPermission(),
+        settings: PilotSettings = PilotSettings()
+    ) {
         self.screenRecordingPermission = screenRecordingPermission
+        self.settings = settings
     }
 
     func refreshScreenRecordingPermission() {
@@ -53,11 +65,21 @@ import PilotOverview
 
     var selectedProfile: Profile? { profiles.first { $0.id == selectedProfileID } }
     var canExport: Bool { !busy && selectedProfile != nil }
+    var canDeleteSelectedProfile: Bool {
+        !busy && selectedProfile != nil
+    }
     func refresh() async {
         do {
             var loaded = try store.list()
             let work = try Profile.work()
-            if !loaded.contains(where: { $0.id == work.id }) { loaded.insert(work, at: 0) }
+            if !settings.hasSeededWork {
+                if !loaded.contains(where: { $0.id == work.id }) {
+                    try store.save(work)
+                    loaded.append(work)
+                }
+                settings.markWorkSeeded()
+            }
+            loaded.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             profiles = loaded
             if selectedProfileID == nil { selectedProfileID = loaded.first?.id }
         } catch { showError(error) }
@@ -81,7 +103,7 @@ import PilotOverview
             let status = await checker.check()
             health = status
             guard status.canRestore, let snapshot = status.snapshot else { throw PilotError.unavailable(status.message) }
-            plan = try RestorePlanner().plan(profile, snapshot: snapshot)
+            plan = try RestorePlanner(globalProtections: settings.effectiveExcludedBundleIDs).plan(profile, snapshot: snapshot)
             report = nil; safariChoice = nil; selectedWindows = [:]; clearMessage()
         } catch { plan = nil; showError(error) }
     }
@@ -103,10 +125,15 @@ import PilotOverview
             defer { busy = false; isRestoring = false; applyTask = nil; self.plan = nil; safariChoice = nil }
             do {
                 let checker = HealthChecker(client: client, manifest: try .bundled(), tracker: tracker)
-                let engine = RestoreEngine(desktop: client, apps: MacApplications(client: client), preflight: {
+                let engine = RestoreEngine(
+                    desktop: client,
+                    apps: MacApplications(client: client),
+                    globalProtections: settings.effectiveExcludedBundleIDs,
+                    preflight: {
                     let status = await checker.check()
                     guard status.canRestore else { throw PilotError.unavailable(status.message) }
-                })
+                    }
+                )
                 report = try await engine.apply(plan, safariConsent: consent, resolutions: resolutions)
                 clearMessage()
             } catch { showError(error) }
@@ -143,6 +170,31 @@ import PilotOverview
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try store.export(profile, to: url); showSuccess("Exported \(profile.name).") }
         catch { showError(error) }
+    }
+    func renameProfile(_ profile: Profile, name: String) {
+        guard !busy else { return }
+        do {
+            let renamed = try store.rename(profile, to: name)
+            if let index = profiles.firstIndex(where: { $0.id == renamed.id }) {
+                profiles[index] = renamed
+            }
+            profiles.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            selectedProfileID = renamed.id
+            selectProfile()
+            showSuccess("Renamed \(profile.name) to \(renamed.name).")
+        } catch { showError(error) }
+    }
+    func deleteProfile(_ profile: Profile) {
+        guard !busy else { return }
+        do {
+            try store.delete(profile)
+            profiles.removeAll { $0.id == profile.id }
+            if selectedProfileID == profile.id {
+                selectedProfileID = profiles.first?.id
+                selectProfile()
+            }
+            showSuccess("Deleted \(profile.name).")
+        } catch { showError(error) }
     }
     func saveDesktop(name: String) async {
         guard !busy else { return }

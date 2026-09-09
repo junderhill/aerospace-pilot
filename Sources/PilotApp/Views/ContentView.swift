@@ -21,7 +21,7 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Save app identities and workspace assignments. ChatGPT is excluded, and windows with the same app need distinct titles.")
+            Text("Save app identities and workspace assignments. Excluded applications are configured in Settings, and windows with the same app need distinct titles.")
         }
         .sheet(isPresented: $model.showingSafariDecision) {
             SafariDecisionView(model: model)

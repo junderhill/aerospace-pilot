@@ -41,6 +41,11 @@ public struct RestorePlanner: Sendable {
         var warnings = ["Apps outside this profile will stay open."]
         var items: [PlanItem] = []
         for assignment in profile.assignments {
+            if globalProtections.contains(assignment.bundleID) {
+                items.append(PlanItem(assignment: assignment, action: .skipped, windowIDs: [],
+                                      detail: "\(assignment.appName) is excluded in Settings and will stay unchanged."))
+                continue
+            }
             if let monitor = assignment.preferredMonitorName, !snapshot.monitors.contains(where: { $0.name == monitor }) {
                 warnings.append("\(assignment.appName): display \(monitor) is absent. Use AeroSpace's current mapping for \(assignment.workspace).")
             }
@@ -62,7 +67,7 @@ public struct RestorePlanner: Sendable {
                 }
             }
         }
-        let protected = Protection.required.union(profile.protectedBundleIDs).union(globalProtections).union([Protection.pilot, Protection.safari])
+        let protected = Protection.immutable.union(profile.protectedBundleIDs).union(globalProtections).union([Protection.safari])
         let managed = Set(profile.assignments.map(\.bundleID))
         let workspaces = Set(profile.assignments.map(\.workspace))
         let candidates = snapshot.windows.filter { window in

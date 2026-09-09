@@ -139,7 +139,7 @@ struct WorkspaceOverviewView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Workspaces").font(.largeTitle.bold())
-                Text("All AeroSpace workspaces · \(OverviewShortcut.label)")
+                Text("All AeroSpace workspaces · \(controller.shortcutLabel)")
                     .foregroundStyle(.secondary)
             }
             Spacer()
