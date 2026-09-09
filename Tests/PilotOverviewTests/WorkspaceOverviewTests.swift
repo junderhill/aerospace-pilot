@@ -15,6 +15,7 @@ struct WorkspaceOverviewTests {
         #expect(groups[0].windows.isEmpty)
         #expect(groups[1].isVisible && groups[1].windows.isEmpty)
         #expect(groups[2].monitorName == "External")
+        #expect(groups[2].monitorID == 2)
         #expect(groups[3].windows.map(\.id) == [2])
     }
 
@@ -28,5 +29,15 @@ struct WorkspaceOverviewTests {
         #expect(OverviewWorkspace.groups(in: snapshot, matching: "reference").first?.name == "Work")
         #expect(OverviewWorkspace.groups(in: snapshot, matching: "empty").first?.windows.isEmpty == true)
         #expect(OverviewWorkspace.groups(in: snapshot, matching: "missing").isEmpty)
+    }
+
+    @Test func canHideEmptyAndPilotOnlyWorkspaces() {
+        let snapshot = DesktopSnapshot(windows: [
+            DesktopWindow(id: 1, bundleID: "test.editor", appName: "Editor", title: "Roadmap", workspace: "Work"),
+            DesktopWindow(id: 2, bundleID: Protection.pilot, appName: "Pilot", title: "Quick View", workspace: "PilotOnly")
+        ], workspaces: [Workspace(name: "Work"), Workspace(name: "Empty"), Workspace(name: "PilotOnly")])
+
+        let groups = OverviewWorkspace.groups(in: snapshot, includingEmpty: false)
+        #expect(groups.map(\.name) == ["Work"])
     }
 }

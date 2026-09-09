@@ -44,13 +44,15 @@ Use **Window previews → Capture Window Previews** to request images once acces
 
 ## Workspace overview
 
-With Pilot running, press **Control–Option–Space** from any app, or click **Workspaces** in Pilot's toolbar. The shortcut toggles a full-display overview on the display under the pointer. It shows all AeroSpace workspaces, including empty ones, with their identifiers, monitor names, and app/window titles. Window images load progressively when Screen Recording is available; names and navigation work without it.
+With Pilot running, press **Control–Option–Space** from any app, or click **Workspaces** in Pilot's toolbar. The shortcut toggles a full-display overview on the display under the pointer. It shows AeroSpace workspaces, including empty ones by default, with their identifiers, monitor names, and app/window titles. Window images load progressively when Screen Recording is available; names and navigation work without it.
 
 1. Type a workspace identifier, app name, or window title to filter the cards.
 2. Click a workspace heading to switch to it, or a window preview to focus that window. Up/Down selects a workspace; Return switches to it.
 3. Press Escape, click Close, or press the shortcut again to dismiss. Opening and dismissing the overview does not move or close any windows.
 
-The shortcut is active only while Pilot is running. If another app has reserved it, Pilot shows a warning and the toolbar/menu action remains available. The overview uses one display at a time and labels workspaces from other displays; it does not create a native macOS full-screen Space. Refresh reloads the desktop snapshot. A changed or closed selection is reported instead of blindly switching to a stale window ID. Images stay in memory and are discarded when the overview closes. Real inactive-workspace image quality still depends on ScreenCaptureKit availability and the pending desktop capture matrix.
+Use **View options** in the overview header to persist **Group workspaces by monitor** and **Hide empty workspaces**. Monitor grouping is available when AeroSpace reports more than one display; it keeps each display's workspace cards together while preserving the workspace identifiers. Hiding empty workspaces also removes workspaces that contain only Pilot's own window.
+
+The shortcut is active only while Pilot is running. If another app has reserved it, Pilot shows a warning and the toolbar/menu action remains available. The panel opens on the display under the pointer; with monitor grouping enabled, workspace cards are organized by AeroSpace display. It does not create a native macOS full-screen Space. Refresh reloads the desktop snapshot. A changed or closed selection is reported instead of blindly switching to a stale window ID. Images stay in memory and are discarded when the overview closes. Real inactive-workspace image quality still depends on ScreenCaptureKit availability and the pending desktop capture matrix.
 
 Profiles run without importing the overview module; the capture module does not depend on profiles.
 

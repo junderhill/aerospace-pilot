@@ -4,9 +4,26 @@ import PilotCore
 import PilotIntegration
 import PilotOverview
 
+struct WorkspaceOverviewMonitorSection: Identifiable, Equatable {
+    let id: Int
+    let name: String
+    let workspaces: [OverviewWorkspace]
+}
+
 @MainActor @Observable final class WorkspaceOverviewModel {
+    private enum PreferenceKey {
+        static let groupByMonitor = "quickView.groupWorkspacesByMonitor"
+        static let hideEmptyWorkspaces = "quickView.hideEmptyWorkspaces"
+    }
+
     var query = ""
     var selectedWorkspace: String?
+    var groupByMonitor: Bool {
+        didSet { preferences.set(groupByMonitor, forKey: PreferenceKey.groupByMonitor) }
+    }
+    var hideEmptyWorkspaces: Bool {
+        didSet { preferences.set(hideEmptyWorkspaces, forKey: PreferenceKey.hideEmptyWorkspaces) }
+    }
     private(set) var snapshot: DesktopSnapshot?
     private(set) var thumbnails: [Int: Thumbnail] = [:]
     private(set) var loading = false
@@ -15,6 +32,7 @@ import PilotOverview
     private(set) var canCapture = false
     private(set) var error: String?
     @ObservationIgnored private var generation = UUID()
+    @ObservationIgnored private let preferences: UserDefaults
     @ObservationIgnored private let readDesktop: @MainActor () async throws -> DesktopSnapshot
     @ObservationIgnored private let captureWindows: @MainActor ([DesktopWindow], @escaping @MainActor (Thumbnail) -> Void) async -> Void
     @ObservationIgnored private let hasPermission: () -> Bool
@@ -30,8 +48,12 @@ import PilotOverview
         switchWorkspace: @escaping @MainActor (String) async throws -> Void = { name in
             try await AeroSpaceClient().command(["workspace", "--", name])
         },
-        focusWindow: @escaping @MainActor (Int) async throws -> Void = { try await AeroSpaceClient().focus(windowID: $0) }
+        focusWindow: @escaping @MainActor (Int) async throws -> Void = { try await AeroSpaceClient().focus(windowID: $0) },
+        preferences: UserDefaults = .standard
     ) {
+        self.preferences = preferences
+        self.groupByMonitor = preferences.object(forKey: PreferenceKey.groupByMonitor) as? Bool ?? true
+        self.hideEmptyWorkspaces = preferences.object(forKey: PreferenceKey.hideEmptyWorkspaces) as? Bool ?? false
         self.readDesktop = readDesktop
         self.captureWindows = captureWindows
         self.hasPermission = hasPermission
@@ -39,7 +61,33 @@ import PilotOverview
         self.focusWindow = focusWindow
     }
 
-    var groups: [OverviewWorkspace] { snapshot.map { OverviewWorkspace.groups(in: $0, matching: query) } ?? [] }
+    var groups: [OverviewWorkspace] {
+        snapshot.map {
+            OverviewWorkspace.groups(in: $0, matching: query, includingEmpty: !hideEmptyWorkspaces)
+        } ?? []
+    }
+
+    var hasMultipleMonitors: Bool { (snapshot?.monitors.count ?? 0) > 1 }
+
+    var monitorSections: [WorkspaceOverviewMonitorSection] {
+        guard let snapshot, hasMultipleMonitors, groupByMonitor else { return [] }
+        let grouped = Dictionary(grouping: groups, by: \.monitorID)
+        let order = snapshot.monitors.map(\.id)
+        return grouped.keys.sorted { left, right in
+            let leftIndex = order.firstIndex(of: left) ?? order.count
+            let rightIndex = order.firstIndex(of: right) ?? order.count
+            if leftIndex != rightIndex { return leftIndex < rightIndex }
+            return left < right
+        }.map { monitorID in
+            let name = snapshot.monitors.first(where: { $0.id == monitorID })?.name ?? "Display unknown"
+            let workspaces = (grouped[monitorID] ?? []).sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+            return WorkspaceOverviewMonitorSection(id: monitorID, name: name, workspaces: workspaces)
+        }
+    }
+
+    var usesMonitorGrouping: Bool { groupByMonitor && hasMultipleMonitors }
 
     func load() async {
         let request = UUID()

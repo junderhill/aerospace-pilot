@@ -4,11 +4,16 @@ import PilotCore
 public struct OverviewWorkspace: Identifiable, Equatable, Sendable {
     public var id: String { name }
     public let name: String
+    public let monitorID: Int
     public let monitorName: String
     public let isVisible: Bool
     public let windows: [DesktopWindow]
 
-    public static func groups(in snapshot: DesktopSnapshot, matching query: String = "") -> [Self] {
+    public static func groups(
+        in snapshot: DesktopSnapshot,
+        matching query: String = "",
+        includingEmpty: Bool = true
+    ) -> [Self] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let windows = snapshot.windows.filter { $0.bundleID != Protection.pilot }
         let names = Set(snapshot.workspaces.map(\.name)).union(windows.map(\.workspace))
@@ -19,15 +24,15 @@ public struct OverviewWorkspace: Identifiable, Equatable, Sendable {
                 if $0.title != $1.title { return $0.title.localizedStandardCompare($1.title) == .orderedAscending }
                 return $0.id < $1.id
             }
-            let matches = members.filter {
-                query.isEmpty || name.localizedCaseInsensitiveContains(query)
-                    || $0.appName.localizedCaseInsensitiveContains(query)
+            let workspaceMatches = query.isEmpty || name.localizedCaseInsensitiveContains(query)
+            let matches = workspaceMatches ? members : members.filter {
+                $0.appName.localizedCaseInsensitiveContains(query)
                     || $0.title.localizedCaseInsensitiveContains(query)
             }
-            guard query.isEmpty || name.localizedCaseInsensitiveContains(query) || !matches.isEmpty else { return nil }
+            guard (query.isEmpty || workspaceMatches || !matches.isEmpty), includingEmpty || !matches.isEmpty else { return nil }
             let monitorID = workspace?.monitorID ?? members.first?.monitorID
             let monitor = snapshot.monitors.first { $0.id == monitorID }?.name ?? "Display unknown"
-            return Self(name: name, monitorName: monitor, isVisible: workspace?.isVisible ?? false, windows: matches)
+            return Self(name: name, monitorID: monitorID ?? 0, monitorName: monitor, isVisible: workspace?.isVisible ?? false, windows: matches)
         }
     }
 }

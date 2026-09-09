@@ -54,13 +54,7 @@ struct WorkspaceOverviewView: View {
                         )
                         .frame(maxWidth: .infinity, minHeight: 240)
                     } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 310, maximum: 520), spacing: 20)], alignment: .leading, spacing: 20) {
-                            ForEach(model.groups) { group in
-                                OverviewWorkspaceCard(group: group, controller: controller)
-                                    .id(group.name)
-                            }
-                        }
-                        .padding(3)
+                        workspaceCards
                     }
                 }
                 .onChange(of: model.selectedWorkspace) { _, name in
@@ -100,10 +94,52 @@ struct WorkspaceOverviewView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Menu("View options", systemImage: "slider.horizontal.3") {
+                Toggle("Group workspaces by monitor", isOn: $model.groupByMonitor)
+                    .disabled(!model.hasMultipleMonitors)
+                Toggle("Hide empty workspaces", isOn: $model.hideEmptyWorkspaces)
+            }
+            .help("Quick View options")
             Button("Refresh", systemImage: "arrow.clockwise") { controller.refresh() }
                 .disabled(model.loading || model.navigating)
             Button("Close", systemImage: "xmark") { controller.dismiss() }
                 .keyboardShortcut(.cancelAction)
+        }
+    }
+
+    @ViewBuilder
+    private var workspaceCards: some View {
+        if model.usesMonitorGrouping {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                ForEach(model.monitorSections) { section in
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "display.2")
+                            Text(section.name).font(.title2.bold())
+                            Text("\(section.workspaces.count) \(section.workspaces.count == 1 ? "workspace" : "workspaces")")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 310, maximum: 520), spacing: 20)], alignment: .leading, spacing: 20) {
+                            ForEach(section.workspaces) { group in
+                                OverviewWorkspaceCard(group: group, controller: controller)
+                                    .id(group.name)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(3)
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 310, maximum: 520), spacing: 20)], alignment: .leading, spacing: 20) {
+                ForEach(model.groups) { group in
+                    OverviewWorkspaceCard(group: group, controller: controller)
+                        .id(group.name)
+                }
+            }
+            .padding(3)
         }
     }
 }

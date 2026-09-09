@@ -83,4 +83,45 @@ import PilotOverview
         #expect(model.error == "AeroSpace is offline")
         #expect(!model.loading && model.groups.isEmpty)
     }
+
+    @Test func quickViewPreferencesPersistAndSectionsFollowMonitorOrder() async {
+        let suiteName = "WorkspaceOverviewModelTests-\(UUID().uuidString)"
+        guard let preferences = UserDefaults(suiteName: suiteName) else {
+            Issue.record("Could not create isolated preferences")
+            return
+        }
+        defer { preferences.removePersistentDomain(forName: suiteName) }
+
+        let snapshot = DesktopSnapshot(
+            windows: [
+                DesktopWindow(id: 1, bundleID: "test.editor", appName: "Editor", title: "Roadmap", workspace: "A", monitorID: 2),
+                DesktopWindow(id: 2, bundleID: "test.browser", appName: "Browser", title: "Reference", workspace: "B", monitorID: 1)
+            ],
+            workspaces: [
+                Workspace(name: "A", monitorID: 2),
+                Workspace(name: "B", monitorID: 1),
+                Workspace(name: "Empty", monitorID: 1)
+            ],
+            monitors: [Monitor(id: 1, name: "Built-in"), Monitor(id: 2, name: "External")]
+        )
+        let model = WorkspaceOverviewModel(readDesktop: { snapshot }, hasPermission: { false }, preferences: preferences)
+        await model.load()
+
+        #expect(model.groupByMonitor)
+        #expect(!model.hideEmptyWorkspaces)
+        #expect(model.hasMultipleMonitors)
+        #expect(model.monitorSections.map(\.name) == ["Built-in", "External"])
+        #expect(model.monitorSections[0].workspaces.map(\.name) == ["B", "Empty"])
+        #expect(model.monitorSections[1].workspaces.map(\.name) == ["A"])
+
+        model.hideEmptyWorkspaces = true
+        #expect(model.groups.map(\.name) == ["A", "B"])
+        #expect(model.monitorSections[0].workspaces.map(\.name) == ["B"])
+        model.groupByMonitor = false
+        #expect(!model.usesMonitorGrouping && model.monitorSections.isEmpty)
+
+        let reloaded = WorkspaceOverviewModel(readDesktop: { snapshot }, hasPermission: { false }, preferences: preferences)
+        #expect(!reloaded.groupByMonitor)
+        #expect(reloaded.hideEmptyWorkspaces)
+    }
 }
