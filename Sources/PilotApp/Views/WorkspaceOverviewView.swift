@@ -3,10 +3,23 @@ import SwiftUI
 import PilotCore
 import PilotOverview
 
+private enum WorkspaceOverviewLayout {
+    static let coordinateSpace = "workspace-overview-grid"
+}
+
+private struct WorkspaceCardFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
 struct WorkspaceOverviewView: View {
     let controller: WorkspaceOverviewController
     @Bindable var model: WorkspaceOverviewModel
     @FocusState private var searchFocused: Bool
+    @State private var workspaceColumnCount = 1
 
     init(controller: WorkspaceOverviewController) {
         self.controller = controller
@@ -23,8 +36,22 @@ struct WorkspaceOverviewView: View {
                 .onSubmit {
                     if let selected = model.selectedWorkspace { controller.activate(workspace: selected) }
                 }
-                .onKeyPress(.downArrow) { model.moveSelection(1); return .handled }
-                .onKeyPress(.upArrow) { model.moveSelection(-1); return .handled }
+                .onKeyPress(.downArrow) {
+                    model.moveSelection(.down, columns: workspaceColumnCount)
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    model.moveSelection(.up, columns: workspaceColumnCount)
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    model.moveSelection(.right, columns: workspaceColumnCount)
+                    return .handled
+                }
+                .onKeyPress(.leftArrow) {
+                    model.moveSelection(.left, columns: workspaceColumnCount)
+                    return .handled
+                }
                 .onChange(of: model.query) { _, _ in
                     model.selectedWorkspace = nil
                     model.reconcileSelection()
@@ -57,13 +84,18 @@ struct WorkspaceOverviewView: View {
                         workspaceCards
                     }
                 }
+                .coordinateSpace(name: WorkspaceOverviewLayout.coordinateSpace)
+                .onPreferenceChange(WorkspaceCardFramePreferenceKey.self) { frames in
+                    let count = inferredColumnCount(from: frames)
+                    if count > workspaceColumnCount { workspaceColumnCount = count }
+                }
                 .onChange(of: model.selectedWorkspace) { _, name in
                     if let name { withAnimation(.easeOut(duration: 0.15)) { scroll.scrollTo(name) } }
                 }
             }
 
             HStack {
-                Text("↑ ↓ Select workspace · Return Switch · Click a window to focus it · Esc Close")
+                Text("← → ↑ ↓ Select workspace · Return Switch · Click a window to focus it · Esc Close")
                 Spacer()
                 if model.capturing {
                     ProgressView().controlSize(.small)
@@ -84,6 +116,23 @@ struct WorkspaceOverviewView: View {
             searchFocused = true
         }
         .onExitCommand { controller.dismiss() }
+    }
+
+    private func inferredColumnCount(from frames: [String: CGRect]) -> Int {
+        let yPositions = frames.values.map(\.minY).sorted()
+        guard !yPositions.isEmpty else { return 1 }
+
+        var rowCounts: [Int] = []
+        var rowStart: CGFloat?
+        for y in yPositions {
+            if let rowStart, abs(y - rowStart) <= 2 {
+                rowCounts[rowCounts.count - 1] += 1
+            } else {
+                rowStart = y
+                rowCounts.append(1)
+            }
+        }
+        return max(1, rowCounts.max() ?? 1)
     }
 
     private var header: some View {
@@ -200,6 +249,14 @@ private struct OverviewWorkspaceCard: View {
         .disabled(controller.model.navigating)
         .padding(16)
         .background(.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: WorkspaceCardFramePreferenceKey.self,
+                    value: [group.name: proxy.frame(in: .named(WorkspaceOverviewLayout.coordinateSpace))]
+                )
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(selected ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: selected ? 3 : 1)

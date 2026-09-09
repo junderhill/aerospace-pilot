@@ -20,6 +20,8 @@ import PilotOverview
         #expect(model.selectedWorkspace == "2")
         model.moveSelection(1)
         #expect(model.selectedWorkspace == "1")
+        model.moveSelection(-1)
+        #expect(model.selectedWorkspace == "2")
         #expect(await model.activate(workspace: "1"))
         #expect(selected == "1")
     }
@@ -100,6 +102,7 @@ import PilotOverview
             workspaces: [
                 Workspace(name: "A", monitorID: 2),
                 Workspace(name: "B", monitorID: 1),
+                Workspace(name: "C", monitorID: 2),
                 Workspace(name: "Empty", monitorID: 1)
             ],
             monitors: [Monitor(id: 1, name: "Built-in"), Monitor(id: 2, name: "External")]
@@ -112,11 +115,26 @@ import PilotOverview
         #expect(model.hasMultipleMonitors)
         #expect(model.monitorSections.map(\.name) == ["Built-in", "External"])
         #expect(model.monitorSections[0].workspaces.map(\.name) == ["B", "Empty"])
-        #expect(model.monitorSections[1].workspaces.map(\.name) == ["A"])
+        #expect(model.monitorSections[1].workspaces.map(\.name) == ["A", "C"])
+
+        model.selectedWorkspace = "A"
+        model.moveSelection(1)
+        #expect(model.selectedWorkspace == "C")
+
+        model.selectedWorkspace = "Empty"
+        model.moveSelection(.down, columns: 2)
+        #expect(model.selectedWorkspace == "C")
+        model.moveSelection(.up, columns: 2)
+        #expect(model.selectedWorkspace == "Empty")
+        model.moveSelection(.left, columns: 2)
+        #expect(model.selectedWorkspace == "B")
+        model.moveSelection(.right, columns: 2)
+        #expect(model.selectedWorkspace == "Empty")
 
         model.hideEmptyWorkspaces = true
         #expect(model.groups.map(\.name) == ["A", "B"])
         #expect(model.monitorSections[0].workspaces.map(\.name) == ["B"])
+        #expect(model.selectedWorkspace == "B")
         model.groupByMonitor = false
         #expect(!model.usesMonitorGrouping && model.monitorSections.isEmpty)
 

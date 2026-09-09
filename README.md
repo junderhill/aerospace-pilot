@@ -47,7 +47,7 @@ Use **Window previews → Capture Window Previews** to request images once acces
 With Pilot running, press **Control–Option–Space** from any app, or click **Workspaces** in Pilot's toolbar. The shortcut toggles a full-display overview on the display under the pointer. It shows AeroSpace workspaces, including empty ones by default, with their identifiers, monitor names, and app/window titles. Window images load progressively when Screen Recording is available; names and navigation work without it.
 
 1. Type a workspace identifier, app name, or window title to filter the cards.
-2. Click a workspace heading to switch to it, or a window preview to focus that window. Up/Down selects a workspace; Return switches to it.
+2. Click a workspace heading to switch to it, or a window preview to focus that window. Arrow keys move through the rendered card grid; when monitor grouping is enabled, monitor sections are stacked in monitor order. Return switches to it.
 3. Press Escape, click Close, or press the shortcut again to dismiss. Opening and dismissing the overview does not move or close any windows.
 
 Use **View options** in the overview header to persist **Group workspaces by monitor** and **Hide empty workspaces**. Monitor grouping is available when AeroSpace reports more than one display; it keeps each display's workspace cards together while preserving the workspace identifiers. Hiding empty workspaces also removes workspaces that contain only Pilot's own window.
