@@ -62,6 +62,34 @@ public struct AeroSpaceClient: DesktopClient {
         try Protection.requireMutable(window.bundleID, additional: globalProtections)
         try await command(["move-node-to-workspace", "--window-id", String(windowID), "--", workspace])
     }
+    public func move(workspace: String, toMonitor monitorName: String) async throws {
+        guard !workspace.isEmpty, !workspace.contains(where: { $0.isNewline || $0.asciiValue == 0 }),
+              !monitorName.isEmpty, !monitorName.contains(where: { $0.isNewline || $0.asciiValue == 0 }) else {
+            throw PilotError.invalid("Invalid workspace or monitor name.")
+        }
+        let current = try await snapshot()
+        guard current.workspaces.contains(where: { $0.name == workspace }) else {
+            throw PilotError.stale("Workspace \(workspace) disappeared.")
+        }
+        // Moving a workspace moves every window it contains. Recheck the
+        // configured exclusions at this command boundary as well as in the
+        // planner so settings changes cannot move a protected app indirectly.
+        for window in current.windows where window.workspace == workspace {
+            try Protection.requireMutable(window.bundleID, additional: globalProtections)
+        }
+        let matchingMonitors = current.monitors.filter {
+            $0.name.localizedCaseInsensitiveCompare(monitorName) == .orderedSame
+        }
+        guard matchingMonitors.count == 1 else {
+            throw PilotError.invalid(matchingMonitors.isEmpty
+                ? "Display \(monitorName) is not present."
+                : "Display \(monitorName) is ambiguous; refusing to guess.")
+        }
+        // AeroSpace accepts a monitor pattern after `--`. Use a fully anchored
+        // escaped name so names such as `USB (27")` are never treated as regex.
+        let escapedName = NSRegularExpression.escapedPattern(for: monitorName)
+        try await command(["move-workspace-to-monitor", "--workspace", workspace, "--", "^\(escapedName)$"])
+    }
     public func focus(windowID: Int) async throws {
         guard windowID > 0 else { throw PilotError.invalid("Invalid window ID.") }
         try await command(["focus", "--window-id", String(windowID)])

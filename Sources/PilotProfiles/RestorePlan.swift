@@ -30,15 +30,25 @@ public struct RestorePlan: Sendable {
     public let snapshot: DesktopSnapshot
     public let items: [PlanItem]
     public let warnings: [String]
+    /// Exact regular application processes observed while the preview was made.
+    /// These identities are required before the apply step may request a normal
+    /// quit, so a replacement process is never mistaken for the preview target.
+    public let cleanupCandidates: [RunningApplication]
+    /// Explicit workspace mappings plus safe legacy mappings inferred from
+    /// assignment-level preferred monitor names.
+    public let workspaceMonitorTargets: [SavedWorkspace]
+    /// Retained for callers of the earlier cleanup preview API. This list only
+    /// describes visible windows and does not include windowless applications.
     public let futureClosureCandidates: [DesktopWindow]
 }
 
 public struct RestorePlanner: Sendable {
     public let globalProtections: Set<String>
     public init(globalProtections: Set<String> = []) { self.globalProtections = globalProtections }
-    public func plan(_ profile: Profile, snapshot: DesktopSnapshot) throws -> RestorePlan {
+    public func plan(_ profile: Profile, snapshot: DesktopSnapshot,
+                     runningApplications: [RunningApplication] = []) throws -> RestorePlan {
         try profile.validate(globalProtections: globalProtections)
-        var warnings = ["Apps outside this profile will stay open."]
+        var warnings = ["Apps outside this profile stay open unless you select the cleanup option before applying."]
         var items: [PlanItem] = []
         for assignment in profile.assignments {
             if globalProtections.contains(assignment.bundleID) {
@@ -46,8 +56,15 @@ public struct RestorePlanner: Sendable {
                                       detail: "\(assignment.appName) is excluded in Settings and will stay unchanged."))
                 continue
             }
-            if let monitor = assignment.preferredMonitorName, !snapshot.monitors.contains(where: { $0.name == monitor }) {
-                warnings.append("\(assignment.appName): display \(monitor) is absent. Use AeroSpace's current mapping for \(assignment.workspace).")
+            if let monitor = assignment.preferredMonitorName {
+                let matches = snapshot.monitors.filter {
+                    $0.name.localizedCaseInsensitiveCompare(monitor) == .orderedSame
+                }
+                if matches.isEmpty {
+                    warnings.append("\(assignment.appName): display \(monitor) is absent. Use AeroSpace's current mapping for \(assignment.workspace).")
+                } else if matches.count > 1 {
+                    warnings.append("\(assignment.appName): display \(monitor) is ambiguous. Use AeroSpace's current mapping for \(assignment.workspace).")
+                }
             }
             let windows = snapshot.windows.filter { $0.bundleID == assignment.bundleID }
             if assignment.safariRecipe != nil {
@@ -67,7 +84,29 @@ public struct RestorePlanner: Sendable {
                 }
             }
         }
-        let protected = Protection.immutable.union(profile.protectedBundleIDs).union(globalProtections).union([Protection.safari])
+        var workspaceMonitorTargets = profile.workspaces
+        let explicitWorkspaceNames = Set(workspaceMonitorTargets.map(\.name))
+        let inferredAssignments = Dictionary(grouping: profile.assignments, by: \.workspace)
+        for workspaceName in inferredAssignments.keys.sorted() where !explicitWorkspaceNames.contains(workspaceName) {
+            let monitorNames = Set(inferredAssignments[workspaceName, default: []].compactMap(\.preferredMonitorName))
+            if monitorNames.count == 1, let monitorName = monitorNames.first {
+                workspaceMonitorTargets.append(SavedWorkspace(name: workspaceName, preferredMonitorName: monitorName))
+            } else if monitorNames.count > 1 {
+                warnings.append("Workspace \(workspaceName): assignments disagree about its saved display; no workspace move will be attempted.")
+            }
+        }
+        for workspace in workspaceMonitorTargets {
+            guard let monitor = workspace.preferredMonitorName else { continue }
+            let matches = snapshot.monitors.filter {
+                $0.name.localizedCaseInsensitiveCompare(monitor) == .orderedSame
+            }
+            if matches.isEmpty {
+                warnings.append("Workspace \(workspace.name): display \(monitor) is absent; it will keep AeroSpace's current mapping.")
+            } else if matches.count > 1 {
+                warnings.append("Workspace \(workspace.name): display \(monitor) is ambiguous; it will keep AeroSpace's current mapping.")
+            }
+        }
+        let protected = Protection.immutable.union(profile.protectedBundleIDs).union(globalProtections)
         let managed = Set(profile.assignments.map(\.bundleID))
         let workspaces = Set(profile.assignments.map(\.workspace))
         let candidates = snapshot.windows.filter { window in
@@ -78,6 +117,15 @@ public struct RestorePlanner: Sendable {
             case .entireDesktop: return true
             }
         }
-        return RestorePlan(profile: profile, snapshot: snapshot, items: items, warnings: warnings, futureClosureCandidates: candidates)
+        let cleanupCandidates = runningApplications.filter { application in
+            !protected.contains(application.bundleID) && !managed.contains(application.bundleID)
+        }.sorted { lhs, rhs in
+            lhs.appName.localizedStandardCompare(rhs.appName) == .orderedAscending
+                || (lhs.appName == rhs.appName && lhs.processID < rhs.processID)
+        }
+        return RestorePlan(profile: profile, snapshot: snapshot, items: items, warnings: warnings,
+                           cleanupCandidates: cleanupCandidates,
+                           workspaceMonitorTargets: workspaceMonitorTargets,
+                           futureClosureCandidates: candidates)
     }
 }

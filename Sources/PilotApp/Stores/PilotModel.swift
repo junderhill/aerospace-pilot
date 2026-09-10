@@ -18,6 +18,9 @@ import PilotOverview
     var isRestoring = false
     var safariChoice: SafariChoice?
     var selectedWindows: [String: Int] = [:]
+    /// Per-apply safety opt-in. A fresh preview and profile selection always
+    /// turn this off so cleanup is never carried into a later restore silently.
+    var closeAppsOutsideLayout = false
     var thumbnails: [Thumbnail] = []
     var previewWindowsByID: [Int: DesktopWindow] = [:]
     var showingSafariDecision = false
@@ -103,11 +106,15 @@ import PilotOverview
             let status = await checker.check()
             health = status
             guard status.canRestore, let snapshot = status.snapshot else { throw PilotError.unavailable(status.message) }
-            plan = try RestorePlanner(globalProtections: settings.effectiveExcludedBundleIDs).plan(profile, snapshot: snapshot)
-            report = nil; safariChoice = nil; selectedWindows = [:]; clearMessage()
+            let apps = MacApplications(client: client)
+            plan = try RestorePlanner(globalProtections: settings.effectiveExcludedBundleIDs)
+                .plan(profile, snapshot: snapshot, runningApplications: apps.runningApplications())
+            report = nil; safariChoice = nil; selectedWindows = [:]; closeAppsOutsideLayout = false; clearMessage()
         } catch { plan = nil; showError(error) }
     }
-    func selectProfile() { plan = nil; report = nil; safariChoice = nil; selectedWindows = [:] }
+    func selectProfile() {
+        plan = nil; report = nil; safariChoice = nil; selectedWindows = [:]; closeAppsOutsideLayout = false
+    }
     func beginApply() {
         guard !busy, let plan, plan.profile == selectedProfile else { return }
         if plan.items.contains(where: { $0.action == .safariDecision }) && safariChoice == nil {
@@ -122,7 +129,14 @@ import PilotOverview
         busy = true
         isRestoring = true
         applyTask = Task {
-            defer { busy = false; isRestoring = false; applyTask = nil; self.plan = nil; safariChoice = nil }
+            defer {
+                busy = false
+                isRestoring = false
+                applyTask = nil
+                self.plan = nil
+                safariChoice = nil
+                closeAppsOutsideLayout = false
+            }
             do {
                 let checker = HealthChecker(client: client, manifest: try .bundled(), tracker: tracker)
                 let engine = RestoreEngine(
@@ -134,7 +148,12 @@ import PilotOverview
                     guard status.canRestore else { throw PilotError.unavailable(status.message) }
                     }
                 )
-                report = try await engine.apply(plan, safariConsent: consent, resolutions: resolutions)
+                report = try await engine.apply(
+                    plan,
+                    safariConsent: consent,
+                    resolutions: resolutions,
+                    closeAppsOutsideLayout: closeAppsOutsideLayout
+                )
                 clearMessage()
             } catch { showError(error) }
         }

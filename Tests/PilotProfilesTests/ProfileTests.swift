@@ -285,4 +285,188 @@ import PilotTestSupport
         #expect(report.outcomes[0].status == .unresolved && apps.closed.isEmpty && apps.opened.isEmpty)
         #expect(await desktop.moves.isEmpty)
     }
+
+    @Test func captureUsesWorkspaceMonitorAndPersistsEmptyWorkspaces() throws {
+        let snapshot = DesktopSnapshot(
+            windows: [DesktopWindow(id: 1, bundleID: "test.editor", appName: "Editor", title: "Document",
+                                    workspace: "T", monitorID: 2)],
+            workspaces: [
+                Workspace(name: "T", monitorID: 1),
+                Workspace(name: "Empty", monitorID: 2)
+            ],
+            monitors: [
+                Monitor(id: 1, name: "Built-in"),
+                Monitor(id: 2, name: "External")
+            ]
+        )
+        let profile = try ProfileStore(directory: URL(fileURLWithPath: "/unused"))
+            .capture(name: "Documents", snapshot: snapshot)
+        #expect(profile.assignments[0].preferredMonitorName == "Built-in")
+        #expect(profile.workspaces == [
+            SavedWorkspace(name: "Empty", preferredMonitorName: "External"),
+            SavedWorkspace(name: "T", preferredMonitorName: "Built-in")
+        ])
+        #expect(try ProfileStore.decode(JSONFiles.encode(profile)) == profile)
+    }
+
+    @Test func cleanupPreviewIncludesWindowlessAppsAndOnlyOptInQuitsThem() async throws {
+        let desktop = MemoryDesktop(windows: [window()])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        apps.observedApplications = [
+            RunningApplication(processID: 10, bundleID: "other.app", appName: "Other"),
+            RunningApplication(processID: 11, bundleID: "test.editor", appName: "Editor")
+        ]
+        let initial = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(
+            profile(),
+            snapshot: initial,
+            runningApplications: apps.runningApplications()
+        )
+        #expect(plan.cleanupCandidates.map(\.bundleID) == ["other.app"])
+
+        let restorer = engine(desktop, apps)
+        _ = try await restorer.apply(plan)
+        #expect(apps.terminated.isEmpty)
+
+        let refreshed = try await desktop.snapshot()
+        let repeatPlan = try RestorePlanner().plan(
+            profile(),
+            snapshot: refreshed,
+            runningApplications: apps.runningApplications()
+        )
+        let report = try await restorer.apply(repeatPlan, closeAppsOutsideLayout: true)
+        #expect(apps.terminated.map(\.bundleID) == ["other.app"])
+        #expect(report.cleanup.contains("1 application"))
+    }
+
+    @Test func cleanupRejectsNewOrRelaunchedProcessesWithoutQuittingAnything() async throws {
+        let desktop = MemoryDesktop(windows: [window()])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        let originalDate = Date(timeIntervalSince1970: 10)
+        apps.observedApplications = [
+            RunningApplication(processID: 10, bundleID: "other.app", appName: "Other", launchDate: originalDate)
+        ]
+        let initial = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(
+            profile(),
+            snapshot: initial,
+            runningApplications: apps.runningApplications()
+        )
+
+        apps.observedApplications = [
+            RunningApplication(processID: 10, bundleID: "other.app", appName: "Other", launchDate: originalDate.addingTimeInterval(1)),
+            RunningApplication(processID: 12, bundleID: "new.app", appName: "New")
+        ]
+        let report = try await engine(desktop, apps).apply(plan, closeAppsOutsideLayout: true)
+        #expect(apps.terminated.isEmpty)
+        #expect(report.cleanup.contains("changed after preview"))
+    }
+
+    @Test func cleanupRefusalAndCancellationAreReportedWithoutForceQuit() async throws {
+        let desktop = MemoryDesktop(windows: [window()])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        apps.observedApplications = [
+            RunningApplication(processID: 10, bundleID: "first.app", appName: "First"),
+            RunningApplication(processID: 11, bundleID: "second.app", appName: "Second")
+        ]
+        let initial = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(
+            profile(),
+            snapshot: initial,
+            runningApplications: apps.runningApplications()
+        )
+        // The plan's candidates are both outside the saved layout.
+        #expect(plan.cleanupCandidates.count == 2)
+
+        apps.terminateRefused = true
+        let refused = try await engine(desktop, apps, timeout: 0.02)
+            .apply(plan, closeAppsOutsideLayout: true)
+        #expect(apps.terminated.isEmpty && refused.cleanup.contains("refused"))
+
+        let refreshed = try await desktop.snapshot()
+        let repeatPlan = try RestorePlanner().plan(
+            profile(),
+            snapshot: refreshed,
+            runningApplications: apps.runningApplications()
+        )
+        apps.terminateRefused = false
+        let cancelledTask = Task {
+            try await engine(desktop, apps, timeout: 0.02)
+                .apply(repeatPlan, closeAppsOutsideLayout: true)
+        }
+        cancelledTask.cancel()
+        let cancelled = try await cancelledTask.value
+        #expect(apps.terminated.isEmpty && cancelled.cleanup.contains("cancelled"))
+    }
+
+    @Test func cleanupProtectsPilotSettingsAndManagedBundlesButAllowsOutsideSafari() async throws {
+        let desktop = MemoryDesktop()
+        let apps = MemoryApplications(desktop: desktop, installed: [])
+        apps.observedApplications = [
+            RunningApplication(processID: 1, bundleID: Protection.pilot, appName: "Pilot"),
+            RunningApplication(processID: 2, bundleID: "excluded.app", appName: "Excluded"),
+            RunningApplication(processID: 3, bundleID: Protection.safari, appName: "Safari"),
+            RunningApplication(processID: 4, bundleID: "other.app", appName: "Other"),
+            RunningApplication(processID: 5, bundleID: "test.editor", appName: "Editor")
+        ]
+        let initial = try await desktop.snapshot()
+        let plan = try RestorePlanner(globalProtections: ["excluded.app"]).plan(
+            profile(),
+            snapshot: initial,
+            runningApplications: apps.runningApplications()
+        )
+        #expect(Set(plan.cleanupCandidates.map(\.bundleID)) == Set([Protection.safari, "other.app"]))
+    }
+
+    @Test func savedWorkspaceMonitorIsRestoredAndMovesWindowsWithTheWorkspace() async throws {
+        let desktop = MemoryDesktop()
+        await desktop.replaceState(DesktopSnapshot(
+            windows: [DesktopWindow(id: 1, bundleID: "test.editor", appName: "Editor", title: "Document",
+                                    workspace: "T", monitorID: 1)],
+            workspaces: [Workspace(name: "T", monitorID: 1)],
+            monitors: [Monitor(id: 1, name: "Built-in"), Monitor(id: 2, name: "External")]
+        ))
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        var p = profile()
+        p.assignments[0].preferredMonitorName = "External"
+        // Leave workspaces empty to exercise the assignment-level fallback used
+        // by profiles saved before workspace mappings were introduced.
+        let initial = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(p, snapshot: initial)
+        #expect(plan.workspaceMonitorTargets == [SavedWorkspace(name: "T", preferredMonitorName: "External")])
+
+        let report = try await engine(desktop, apps).apply(plan)
+        let workspaceMoves = await desktop.workspaceMoves
+        #expect(workspaceMoves.count == 1 && workspaceMoves[0].0 == "T" && workspaceMoves[0].1 == "External")
+        #expect(report.workspaceOutcomes.first?.status == .completed)
+        let after = try await desktop.snapshot()
+        #expect(after.workspaces.first?.monitorID == 2 && after.windows.first?.monitorID == 2)
+    }
+
+    @Test func protectedOrUnapprovedSafariWorkspaceIsNotMovedIndirectly() async throws {
+        let desktop = MemoryDesktop()
+        await desktop.replaceState(DesktopSnapshot(
+            windows: [DesktopWindow(id: 1, bundleID: Protection.safari, appName: "Safari", title: "Tabs",
+                                    workspace: "T", monitorID: 1)],
+            workspaces: [Workspace(name: "T", monitorID: 1)],
+            monitors: [Monitor(id: 1, name: "Built-in"), Monitor(id: 2, name: "External")]
+        ))
+        let apps = MemoryApplications(desktop: desktop, installed: [Protection.safari])
+        let p = Profile(
+            name: "Safari",
+            assignments: [Assignment(id: "safari", bundleID: Protection.safari, appName: "Safari", workspace: "T",
+                                     preferredMonitorName: "External")],
+            workspaces: [SavedWorkspace(name: "T", preferredMonitorName: "External")]
+        )
+        let snapshot = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(p, snapshot: snapshot)
+        let report = try await engine(desktop, apps).apply(
+            plan,
+            safariConsent: .init(choice: .leaveInPlace, snapshot: snapshot)
+        )
+        #expect(await desktop.workspaceMoves.isEmpty)
+        #expect(report.workspaceOutcomes.first?.status == .skipped)
+        let after = try await desktop.snapshot()
+        #expect(after.workspaces.first?.monitorID == 1)
+    }
 }

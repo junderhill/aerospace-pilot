@@ -107,4 +107,36 @@ struct IntegrationTests {
         let calls = await runner.calls
         #expect(!calls.contains { ["close", "move-node-to-workspace"].contains($0.first ?? "") })
     }
+
+    @Test func workspaceMoveUsesAnEscapedAnchoredMonitorPattern() async throws {
+        let runner = FakeProcessRunner.healthy()
+        await runner.set("list-windows", reply: .result(.init(stdout: "[{\"window-id\":17,\"app-bundle-id\":\"test.app\",\"app-name\":\"Test\",\"window-title\":\"Title\",\"workspace\":\"T\",\"monitor-id\":1}]")))
+        await runner.set("list-workspaces", reply: .result(.init(stdout: "[{\"workspace\":\"T\",\"monitor-id\":1,\"workspace-is-visible\":true}]")))
+        await runner.set("list-monitors", reply: .result(.init(stdout: "[{\"monitor-id\":1,\"monitor-name\":\"Built-in\"},{\"monitor-id\":2,\"monitor-name\":\"DELL (27\\\")\"}]")))
+        await runner.set("move-workspace-to-monitor", reply: .result(.init()))
+
+        try await client(runner).move(workspace: "T", toMonitor: "DELL (27\")")
+        let calls = await runner.calls
+        let move = calls.first { $0.first == "move-workspace-to-monitor" }
+        #expect(move != nil)
+        if let move {
+            let expectedPattern = "^\(NSRegularExpression.escapedPattern(for: "DELL (27\")"))$"
+            #expect(Array(move.dropFirst(1)) == ["--workspace", "T", "--", expectedPattern])
+            #expect(expectedPattern.contains("\\(") && expectedPattern.contains("\\)"))
+        }
+    }
+
+    @Test func workspaceMoveRefusesProtectedResidentAtCommandBoundary() async throws {
+        let runner = FakeProcessRunner.healthy()
+        await runner.set("list-windows", reply: .result(.init(stdout: "[{\"window-id\":17,\"app-bundle-id\":\"com.openai.codex\",\"app-name\":\"ChatGPT\",\"window-title\":\"Private\",\"workspace\":\"T\",\"monitor-id\":1}]")))
+        await runner.set("list-workspaces", reply: .result(.init(stdout: "[{\"workspace\":\"T\",\"monitor-id\":1,\"workspace-is-visible\":true}]")))
+        await runner.set("list-monitors", reply: .result(.init(stdout: "[{\"monitor-id\":1,\"monitor-name\":\"Built-in\"},{\"monitor-id\":2,\"monitor-name\":\"External\"}]")))
+
+        let configured = client(runner, globalProtections: ["com.openai.codex"])
+        await #expect(throws: PilotError.self) {
+            try await configured.move(workspace: "T", toMonitor: "External")
+        }
+        let calls = await runner.calls
+        #expect(!calls.contains { $0.first == "move-workspace-to-monitor" })
+    }
 }

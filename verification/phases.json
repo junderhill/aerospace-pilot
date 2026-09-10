@@ -5,8 +5,8 @@
     "integration": "Documented AeroSpace CLI; no socket or upstream changes.",
     "capture": "Original public ScreenCaptureKit path; AeroKit build evaluated, no code vendored. Desktop feasibility remains a required gate.",
     "protections": "Configurable application exclusions plus immutable self-protection. Every mutation checks protection.",
-    "monitorPolicy": "Follow AeroSpace's current workspace-to-display mapping; report absent preferred displays. Do not move entire workspaces.",
-    "phase3Cleanup": "Inactive, with keep/managedApplications in the Work seed. Final Phase 4 cleanup policy remains undecided.",
+    "monitorPolicy": "Capture workspace-to-monitor names; on restore move existing workspaces to a unique matching monitor when present; report absent or ambiguous mappings and protect excluded residents.",
+    "cleanup": "Per-apply checkbox defaults off; when selected, previewed regular app processes outside assigned bundles receive normal quit requests only after placement; PID/launch-date drift, new apps, refusals, cancellations, and save dialogs are reported without force-quitting.",
     "windowIdentity": "Bundle identity plus optional user-confirmed exact title; ambiguous or changed matches require a current explicit selection.",
     "support": "macOS 14 / Swift 6 build floor; desktop certification pending."
   },

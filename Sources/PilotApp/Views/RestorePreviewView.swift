@@ -22,6 +22,47 @@ struct RestorePreviewView: View {
             Text("Review each action before applying \(plan.profile.name).")
                 .foregroundStyle(.secondary)
 
+            if !plan.workspaceMonitorTargets.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Workspace displays", systemImage: "display.2")
+                        .font(.headline)
+                    ForEach(plan.workspaceMonitorTargets) { workspace in
+                        HStack(spacing: 8) {
+                            Text(workspace.name)
+                                .font(.body.monospaced().weight(.medium))
+                            Text("→ \(workspace.preferredMonitorName ?? "current display mapping")")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Close applications outside this layout", isOn: $model.closeAppsOutsideLayout)
+                    .toggleStyle(.checkbox)
+                    .disabled(model.busy)
+                Text(cleanupDescription)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !plan.cleanupCandidates.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(plan.cleanupCandidates) { application in
+                            Label(application.appName, systemImage: "power")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .help("\(application.bundleID) · process \(application.processID)")
+                        }
+                    }
+                    .padding(.leading, 4)
+                }
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+
             VStack(spacing: 0) {
                 ForEach(plan.items) { item in
                     RestorePreviewRow(model: model, plan: plan, item: item)
@@ -44,6 +85,16 @@ struct RestorePreviewView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private var cleanupDescription: String {
+        if plan.cleanupCandidates.isEmpty {
+            return "No other regular applications are running."
+        }
+        if model.closeAppsOutsideLayout {
+            return "Only the applications listed below receive a normal quit request. Save dialogs and applications launched after this preview are left alone."
+        }
+        return "If enabled, only the applications listed below will receive a normal quit request."
     }
 }
 
@@ -149,6 +200,31 @@ struct RestoreReportView: View {
                     .strokeBorder(.quaternary)
             }
 
+            if !report.workspaceOutcomes.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Workspace displays", systemImage: "display.2")
+                        .font(.headline)
+                    ForEach(report.workspaceOutcomes) { outcome in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(outcome.workspace)
+                                .font(.body.monospaced().weight(.medium))
+                            Text("→ \(outcome.monitorName)")
+                                .font(.callout)
+                            Spacer(minLength: 4)
+                            Text(outcome.status.displayName)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(outcome.status.tint)
+                        }
+                        Text(outcome.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(12)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+            }
+
             Label(report.cleanup, systemImage: "info.circle")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -219,6 +295,24 @@ private extension RestoreOutcome.Status {
         case .completed: .green
         case .skipped: .secondary
         case .cancelled, .unresolved: .orange
+        case .failed: .red
+        }
+    }
+}
+
+private extension WorkspaceRestoreOutcome.Status {
+    var displayName: String {
+        switch self {
+        case .completed: "Completed"
+        case .skipped: "Unchanged"
+        case .failed: "Failed"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .completed: .green
+        case .skipped: .secondary
         case .failed: .red
         }
     }

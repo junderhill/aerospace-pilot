@@ -38,6 +38,20 @@ public struct CleanupSettings: Codable, Equatable, Sendable {
     public init(mode: Mode = .keep, scope: Scope = .managedApplications) { self.mode = mode; self.scope = scope }
 }
 
+/// A saved workspace-to-display relationship.  The monitor name is used as the
+/// stable identity because AeroSpace monitor IDs can change when displays are
+/// unplugged and reconnected.
+public struct SavedWorkspace: Codable, Equatable, Sendable, Identifiable {
+    public var name: String
+    public var preferredMonitorName: String?
+    public var id: String { name }
+
+    public init(name: String, preferredMonitorName: String? = nil) {
+        self.name = name
+        self.preferredMonitorName = preferredMonitorName
+    }
+}
+
 public struct Profile: Codable, Equatable, Sendable, Identifiable {
     public enum MonitorPolicy: String, Codable, Sendable { case followAeroSpace }
     public var schemaVersion: Int
@@ -47,17 +61,57 @@ public struct Profile: Codable, Equatable, Sendable, Identifiable {
     public var protectedBundleIDs: [String]
     public var cleanup: CleanupSettings
     public var monitorPolicy: MonitorPolicy
+    public var workspaces: [SavedWorkspace]
     public init(id: UUID = UUID(), name: String, assignments: [Assignment],
-                protectedBundleIDs: [String] = [], cleanup: CleanupSettings = .init()) {
+                protectedBundleIDs: [String] = [], cleanup: CleanupSettings = .init(),
+                workspaces: [SavedWorkspace] = []) {
         schemaVersion = 1; self.id = id; self.name = name; self.assignments = assignments
-        self.protectedBundleIDs = protectedBundleIDs; self.cleanup = cleanup; monitorPolicy = .followAeroSpace
+        self.protectedBundleIDs = protectedBundleIDs; self.cleanup = cleanup
+        monitorPolicy = .followAeroSpace
+        self.workspaces = workspaces
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, id, name, assignments, protectedBundleIDs, cleanup, monitorPolicy, workspaces
+    }
+
+    /// Newer profiles may contain workspace monitor mappings while older schema 1
+    /// files do not. Missing optional fields retain the original schema 1
+    /// defaults so importing an existing profile remains supported.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        assignments = try container.decode([Assignment].self, forKey: .assignments)
+        protectedBundleIDs = try container.decodeIfPresent([String].self, forKey: .protectedBundleIDs) ?? []
+        cleanup = try container.decodeIfPresent(CleanupSettings.self, forKey: .cleanup) ?? .init()
+        monitorPolicy = try container.decodeIfPresent(MonitorPolicy.self, forKey: .monitorPolicy) ?? .followAeroSpace
+        workspaces = try container.decodeIfPresent([SavedWorkspace].self, forKey: .workspaces) ?? []
+    }
+
     public func validate(globalProtections: Set<String> = []) throws {
         guard schemaVersion == 1 else { throw PilotError.invalid("Unsupported profile schema \(schemaVersion); supported schema is 1.") }
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200, !assignments.isEmpty else {
             throw PilotError.invalid("A profile needs a name (1–200 characters) and at least one assignment.")
         }
         guard Set(assignments.map(\.id)).count == assignments.count else { throw PilotError.invalid("Assignment identifiers must be unique.") }
+        guard Set(workspaces.map(\.name)).count == workspaces.count else {
+            throw PilotError.invalid("Workspace identifiers must be unique.")
+        }
+        for workspace in workspaces {
+            guard !workspace.name.isEmpty, workspace.name.count <= 100,
+                  !workspace.name.contains(where: { $0.isNewline || $0.asciiValue == 0 }) else {
+                throw PilotError.invalid("Invalid saved workspace name.")
+            }
+            if let monitor = workspace.preferredMonitorName {
+                guard !monitor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      monitor.count <= 200,
+                      !monitor.contains(where: { $0.isNewline || $0.asciiValue == 0 }) else {
+                    throw PilotError.invalid("Invalid preferred monitor name for workspace \(workspace.name).")
+                }
+            }
+        }
         for assignment in assignments {
             guard !assignment.id.isEmpty, assignment.bundleID.contains("."), !assignment.bundleID.contains(where: \.isWhitespace),
                   !assignment.appName.isEmpty, !assignment.workspace.isEmpty, assignment.workspace.count <= 100,
@@ -67,6 +121,13 @@ public struct Profile: Codable, Equatable, Sendable, Identifiable {
             try Protection.requireMutable(assignment.bundleID, additional: Set(protectedBundleIDs))
             if let identity = assignment.identity, identity.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw PilotError.invalid("Exact-title identity cannot be empty.")
+            }
+            if let monitor = assignment.preferredMonitorName {
+                guard !monitor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      monitor.count <= 200,
+                      !monitor.contains(where: { $0.isNewline || $0.asciiValue == 0 }) else {
+                    throw PilotError.invalid("Invalid preferred monitor name for assignment \(assignment.id).")
+                }
             }
             if let recipe = assignment.safariRecipe {
                 guard assignment.bundleID == Protection.safari, !recipe.logicalWindow.isEmpty, !recipe.urls.isEmpty else {

@@ -50,6 +50,16 @@ public struct ProfileStore: Sendable {
     public func capture(name: String, snapshot: DesktopSnapshot) throws -> Profile {
         let excluded = Protection.immutable.union(globalProtections)
         var windows = snapshot.windows.filter { !excluded.contains($0.bundleID) }.sorted { $0.id < $1.id }
+        let monitorNamesByID = Dictionary(snapshot.monitors.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        // Workspace placement is the source of truth for monitor assignment.
+        // A floating window can report a different monitor from its workspace.
+        let workspaceMonitorNames = Dictionary(
+            snapshot.workspaces.compactMap { workspace -> (String, String)? in
+                guard let monitorName = monitorNamesByID[workspace.monitorID] else { return nil }
+                return (workspace.name, monitorName)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
         let safari = windows.filter { $0.bundleID == Protection.safari }
         if safari.count > 1 {
             guard Set(safari.map(\.workspace)).count == 1 else {
@@ -61,11 +71,15 @@ public struct ProfileStore: Sendable {
         let assignments = windows.map { window in
             Assignment(bundleID: window.bundleID, appName: window.appName, workspace: window.workspace,
                        identity: (groups[window.bundleID]?.count ?? 0) > 1 ? WindowIdentity(exactTitle: window.title) : nil,
-                       preferredMonitorName: snapshot.monitors.first { $0.id == window.monitorID }?.name)
+                       preferredMonitorName: workspaceMonitorNames[window.workspace] ?? monitorNamesByID[window.monitorID])
         }
+        let workspaces = snapshot.workspaces
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map { SavedWorkspace(name: $0.name, preferredMonitorName: monitorNamesByID[$0.monitorID]) }
         // Global exclusions are runtime settings. Do not bake them into the saved layout,
         // so a user can remove an exclusion later without having to recapture the layout.
-        let profile = Profile(name: name, assignments: assignments, protectedBundleIDs: Protection.immutable.sorted())
+        let profile = Profile(name: name, assignments: assignments, protectedBundleIDs: Protection.immutable.sorted(),
+                              workspaces: workspaces)
         try profile.validate(globalProtections: globalProtections)
         return profile
     }

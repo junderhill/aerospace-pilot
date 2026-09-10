@@ -2,7 +2,7 @@
 
 Run `./script/build_and_run.sh --verify` to build and open the development app.
 
-An independent macOS companion for AeroSpace. This implementation covers the Phase 1 foundation, Phase 2 CLI/health/capture infrastructure, and Phase 3 profile workflow. **Desktop certification is still pending.** The cumulative gate reports missing evidence as blocked, never passed.
+An independent macOS companion for AeroSpace. This implementation covers the Phase 1 foundation, Phase 2 CLI/health/capture infrastructure, and Phase 3 profile workflow, including opt-in outside-app cleanup and workspace display restoration. **Desktop certification is still pending.** The cumulative gate reports missing evidence as blocked, never passed.
 
 ## Development
 
@@ -22,7 +22,8 @@ Open the main window from the **AeroSpace Pilot** menu-bar item, then:
 
 1. Select **Work** and click **Preview Restore**.
 2. Resolve any ambiguous windows using the preview's window picker.
-3. Click **Apply Preview**, choose how to handle **all** existing Safari windows, then confirm **Apply Work**. The dialog defaults to leaving existing Safari content in place. **Cancel** returns to the preview without restoring any apps.
+3. Optional: enable **Close applications outside this layout**. The preview lists the exact regular app processes that would receive a normal quit request; newly launched or relaunched apps are left running.
+4. Click **Apply Preview**, choose how to handle **all** existing Safari windows, then confirm **Apply Work**. The dialog defaults to leaving existing Safari content in place. **Cancel** returns to the preview without restoring any apps.
 
 Work is a boilerplate example: Safari → 1, Visual Studio Code → 2, and Calendar → 3. Install the example apps or import a profile suited to your setup before applying it. The example contains no personal URLs, document titles, or monitor preferences. Configure excluded applications in **Settings**; Pilot itself remains protected automatically.
 
@@ -30,13 +31,13 @@ Use the profile sidebar's context menu or **Rename Selected…** and **Delete Se
 
 Open **Settings** from the gear button in the toolbar (or the app menu) to choose excluded applications and record a new Quick View shortcut. Exclusions apply both when saving a layout and when restoring one; excluded assignments are shown as **Leave unchanged** in the restore preview.
 
-Profiles are human-readable JSON. **Import**, **Export**, and **Save Desktop** support portable configuration. Saved profiles and version observations live in `~/Library/Application Support/AeroSpace Pilot/`. Imports fully validate before an atomic write. Runtime window IDs are never stored in profiles. Current windows are reused; missing windows are opened through Launch Services. Multiple windows require distinct exact-title identities or an explicit selection, and changed previews require a refresh.
+Profiles are human-readable JSON. **Import**, **Export**, and **Save Desktop** support portable configuration. Saved profiles and version observations live in `~/Library/Application Support/AeroSpace Pilot/`. Imports fully validate before an atomic write. Runtime window IDs are never stored in profiles. Current windows are reused; missing windows are opened through Launch Services. Multiple windows require distinct exact-title identities or an explicit selection, and changed previews require a refresh. Profiles also save each workspace's monitor name, including empty workspaces; restore uses a unique currently connected monitor with the same name when available and reports missing or ambiguous displays. Older profiles without workspace entries infer a mapping only when their assignments agree.
 
 Exact-title identities are useful for stable document/test windows, not a generic content-restoration mechanism. The engine cannot recreate an unsaved document or a terminal session. If an app opens a window that does not match the saved title, the result remains unresolved. For multiple Safari windows, Save Desktop can capture a single shared destination; Safari windows spread across destinations require choosing one destination first.
 
-This phase preserves validated Safari URL recipes but reports them as unsupported during apply. It supplies no URLs or terminal commands. Cleanup settings round-trip, but all unrelated-app cleanup remains inactive until Phase 4. An explicit **Close All** Safari choice uses normal AeroSpace window close and waits for the window to disappear; it never dismisses dialogs or forces a quit. A refusal/cancellation stops further Safari work. After a successful close-all with no recipe, one ordinary Safari window is reopened and placed.
+This phase preserves validated Safari URL recipes but reports them as unsupported during apply. It supplies no URLs or terminal commands. The outside-app checkbox is off by default and, when enabled, sends normal quit requests only to the previewed processes after placement. Pilot, Settings-excluded applications, assigned applications, newly launched processes, refusals, cancellations, and save dialogs are protected or reported without force-quitting. An explicit **Close All** Safari choice uses normal AeroSpace window close and waits for the window to disappear; it never dismisses dialogs or forces a quit. A refusal/cancellation stops further Safari work. After a successful close-all with no recipe, one ordinary Safari window is reopened and placed.
 
-The monitor policy follows AeroSpace's existing workspace mapping. An absent preferred monitor is reported, then the workspace's current available mapping is used. Pilot never moves an entire workspace to another display during profile restore.
+The monitor policy captures workspace-to-monitor names rather than runtime display IDs. During restore, existing workspaces are moved to a unique currently connected monitor with the saved name; absent or duplicate names are reported and left where they are. Workspaces containing protected/excluded applications or Safari windows without valid consent are not moved indirectly.
 
 ## Health and thumbnail proof
 

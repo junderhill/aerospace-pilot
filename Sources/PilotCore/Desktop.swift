@@ -36,6 +36,37 @@ public struct Monitor: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey { case id = "monitor-id", name = "monitor-name" }
 }
 
+/// A running application's process identity as observed during a restore preview.
+///
+/// Bundle identifiers are not sufficient for destructive actions: an application
+/// can be quit and relaunched between preview and apply.  The process identifier
+/// is the primary identity and launch date, when macOS supplies it, provides an
+/// additional guard against accidentally targeting the replacement process.
+public struct RunningApplication: Codable, Equatable, Sendable, Identifiable {
+    public var processID: Int32
+    public var bundleID: String
+    public var appName: String
+    public var launchDate: Date?
+
+    public var id: Int32 { processID }
+
+    public init(processID: Int32, bundleID: String, appName: String, launchDate: Date? = nil) {
+        self.processID = processID
+        self.bundleID = bundleID
+        self.appName = appName
+        self.launchDate = launchDate
+    }
+
+    /// Returns true when the process is the same process observed at preview time.
+    /// If either launch date is unavailable, the process ID remains the strongest
+    /// identity macOS gives us and is used on its own.
+    public func matches(_ other: Self) -> Bool {
+        processID == other.processID &&
+            bundleID == other.bundleID &&
+            (launchDate == nil || other.launchDate == nil || launchDate == other.launchDate)
+    }
+}
+
 public struct DesktopSnapshot: Codable, Equatable, Sendable {
     public var windows: [DesktopWindow]
     public var workspaces: [Workspace]
@@ -48,6 +79,7 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
 public protocol DesktopClient: Sendable {
     func snapshot() async throws -> DesktopSnapshot
     func move(windowID: Int, to workspace: String) async throws
+    func move(workspace: String, toMonitor monitorPattern: String) async throws
     func focus(windowID: Int) async throws
 }
 
