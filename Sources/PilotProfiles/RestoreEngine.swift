@@ -178,10 +178,11 @@ public struct WindowResolution: Sendable {
                     }
                     selection = live
                 } else {
-                    let matches = windows.filter { (assignment.identity?.matches($0) ?? true) && !consumed.contains($0.id) }
+                    let matches = assignment.matchingWindows(in: windows, assignments: preview.profile.assignments)
+                        .filter { !consumed.contains($0.id) || $0.workspace == assignment.workspace }
                     selection = matches.count == 1 ? matches[0] : nil
                 }
-                guard let selection, !consumed.contains(selection.id) else {
+                guard let selection, !consumed.contains(selection.id) || selection.workspace == assignment.workspace else {
                     outcomes.append(outcome(.unresolved, "No unique window identity. Refresh preview and select a window explicitly.")); continue
                 }
                 try await place(selection, assignment: assignment, protected: protected)

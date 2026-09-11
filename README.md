@@ -8,7 +8,7 @@ An independent macOS companion for AeroSpace. This implementation covers the Pha
 
 1. Install Xcode with Swift 6+ and select its developer directory. The package targets macOS 14+.
 2. Run `./script/bootstrap.sh`. It checks prerequisites and resolves the dependency-free Swift package; repeat runs are safe.
-3. Run `./script/build_and_run.sh --verify`, or use the project's **Run** action. The app starts in the menu bar; choose **Open AeroSpace Pilot** from its menu when you need the main window. The app stays under `dist/`; nothing is installed or registered at login.
+3. Run `./script/build_and_run.sh --verify`, or use the project's **Run** action. Pilot appears in the Dock and Command–Tab, and also keeps its menu-bar control. Clicking its Dock icon brings its main window forward. The app stays under `dist/`; nothing is installed or registered at login.
 4. Run `./script/test.sh` and `./script/test.sh --suite contracts` for deterministic tests.
 5. Run `./script/verify.sh --phase 3` for cumulative gates and evidence under `artifacts/verification/`.
 

@@ -128,6 +128,13 @@ private struct RestorePreviewRow: View {
             }
 
             if item.action == .resolve {
+                if let identity = item.assignment.identity {
+                    Text("Saved window title: \(identity.value)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Picker(
                     "Window",
                     selection: Binding(
@@ -137,7 +144,7 @@ private struct RestorePreviewRow: View {
                 ) {
                     Text("Choose a window…").tag(0)
                     ForEach(plan.snapshot.windows.filter { item.windowIDs.contains($0.id) }) { window in
-                        Text("\(window.title) [\(window.workspace)] · \(window.id)")
+                        Text("\(window.title.isEmpty ? "Untitled window" : window.title) [\(window.workspace)] · \(window.id)")
                             .tag(window.id)
                     }
                 }

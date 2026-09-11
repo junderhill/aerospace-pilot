@@ -28,6 +28,24 @@ public struct Assignment: Codable, Equatable, Sendable, Identifiable {
         self.id = id; self.bundleID = bundleID; self.appName = appName; self.workspace = workspace
         self.identity = identity; self.safariRecipe = safariRecipe; self.preferredMonitorName = preferredMonitorName
     }
+
+    /// Prefer saved titles, but tolerate a changed title for a uniquely placed
+    /// window. Repeated saved entries for the same destination can share that
+    /// placement; never borrow a window identified for a different destination.
+    func matchingWindows(in windows: [DesktopWindow], assignments: [Assignment]) -> [DesktopWindow] {
+        let appWindows = windows.filter { $0.bundleID == bundleID }
+        let exact = appWindows.filter { identity?.matches($0) ?? true }
+        guard exact.isEmpty, identity != nil else {
+            return exact
+        }
+        let placed = appWindows.filter { $0.workspace == workspace }
+        guard placed.count == 1, let window = placed.first,
+              !assignments.contains(where: {
+                  $0.id != id && $0.bundleID == bundleID && $0.workspace != workspace
+                      && ($0.identity?.matches(window) ?? false)
+              }) else { return [] }
+        return placed
+    }
 }
 
 public struct CleanupSettings: Codable, Equatable, Sendable {

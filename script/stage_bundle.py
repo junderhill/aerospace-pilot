@@ -18,6 +18,10 @@ for product, name, identity in [
     shutil.copy2(binaries / product, executable)
     resources = app / 'Contents/Resources'
     resources.mkdir(parents=True, exist_ok=True)
+    icon_metadata = {}
+    if product == 'AeroSpacePilot':
+        shutil.copy2(root / 'Resources/Icons/AppIcon.icns', resources / 'AppIcon.icns')
+        icon_metadata['CFBundleIconFile'] = 'AppIcon.icns'
     for bundle in binaries.glob('*.bundle'):
         shutil.copytree(bundle, resources / bundle.name, dirs_exist_ok=True)
         # Remove legacy generated root copies; macOS bundles seal resources under Contents.
@@ -29,6 +33,7 @@ for product, name, identity in [
         'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1.0',
         'LSMinimumSystemVersion': '14.0', 'NSPrincipalClass': 'NSApplication',
         'NSHighResolutionCapable': True,
+        **icon_metadata,
         'NSScreenCaptureUsageDescription': 'Show previews of your AeroSpace windows when you request them.',
     }))
     subprocess.run(['/usr/bin/codesign', '--force', '--sign', '-', '--identifier', identity, str(app)], check=True)

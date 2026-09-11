@@ -72,15 +72,17 @@ public struct RestorePlanner: Sendable {
             } else if assignment.bundleID == Protection.safari && !windows.isEmpty {
                 items.append(PlanItem(assignment: assignment, action: .safariDecision, windowIDs: windows.map(\.id), detail: "Choose how to handle all \(windows.count) existing Safari windows, including other workspaces."))
             } else {
-                let matches = windows.filter { assignment.identity?.matches($0) ?? true }
+                let matches = assignment.matchingWindows(in: windows, assignments: profile.assignments)
                 if matches.count == 1, let window = matches.first {
                     items.append(PlanItem(assignment: assignment, action: window.workspace == assignment.workspace ? .alreadyPlaced : .move,
-                                          windowIDs: [window.id], detail: "\(window.title) → \(assignment.workspace)"))
+                                          windowIDs: [window.id], detail: assignment.identity?.matches(window) == false
+                                            ? "Window title changed; using the only window already in \(assignment.workspace)."
+                                            : "\(window.title) → \(assignment.workspace)"))
                 } else if windows.isEmpty {
                     items.append(PlanItem(assignment: assignment, action: .launch, windowIDs: [], detail: "Open \(assignment.appName), wait for its window, then place it in \(assignment.workspace)."))
                 } else {
                     items.append(PlanItem(assignment: assignment, action: .resolve, windowIDs: matches.isEmpty ? windows.map(\.id) : matches.map(\.id),
-                                          detail: matches.isEmpty ? "No exact identity match. Select a current window explicitly." : "Multiple matches. Select a current window explicitly."))
+                                          detail: matches.isEmpty ? "Saved window title not found. Workspace alone does not identify a unique window; choose one below." : "Multiple matches. Select a current window explicitly."))
                 }
             }
         }

@@ -46,12 +46,25 @@ import PilotCore
 }
 
 private struct MenuBarStatusItem: View {
+    @Environment(\.openWindow) private var openWindow
     let model: PilotModel
     let overview: WorkspaceOverviewController
 
     var body: some View {
         Image(systemName: "rectangle.3.group")
             .accessibilityLabel("AeroSpace Pilot")
+            .onChange(of: model.isRestoring) { wasRestoring, isRestoring in
+                guard wasRestoring && !isRestoring else { return }
+                // The menu-bar item stays alive even if the main window was
+                // closed during restore. Return to the results on every exit.
+                PilotAppWindow.showInWindowSwitcher()
+                openWindow(id: PilotAppWindow.identifier)
+                for window in NSApp.windows where PilotAppWindow.isMain(window) {
+                    if window.isMiniaturized { window.deminiaturize(nil) }
+                    window.makeKeyAndOrderFront(nil)
+                }
+                NSApp.activate(ignoringOtherApps: true)
+            }
             .task {
                 overview.start()
                 await model.refresh()
@@ -62,6 +75,11 @@ private struct MenuBarStatusItem: View {
             }
             .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
                 Task { await model.refresh() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { notification in
+                guard let window = notification.object as? NSWindow,
+                      PilotAppWindow.isMain(window) else { return }
+                PilotAppWindow.hideFromWindowSwitcher()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 Task { await model.refreshHealth() }
@@ -82,7 +100,8 @@ private struct MenuBarContent: View {
 
     var body: some View {
         Button("Open AeroSpace Pilot", systemImage: "rectangle.3.group") {
-            openWindow(id: "main")
+            PilotAppWindow.showInWindowSwitcher()
+            openWindow(id: PilotAppWindow.identifier)
         }
 
         Button("Workspace Overview", systemImage: "square.grid.2x2") {
@@ -105,11 +124,28 @@ private struct MenuBarContent: View {
     }
 }
 
+@MainActor
+private enum PilotAppWindow {
+    static let identifier = "main"
+
+    static func isMain(_ window: NSWindow) -> Bool {
+        window.identifier?.rawValue == identifier
+    }
+
+    static func showInWindowSwitcher() {
+        NSApp.setActivationPolicy(.regular)
+    }
+
+    static func hideFromWindowSwitcher() {
+        NSApp.setActivationPolicy(.accessory)
+    }
+}
+
 @MainActor final class PilotAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        PilotAppWindow.hideFromWindowSwitcher()
         DispatchQueue.main.async {
-            for window in NSApp.windows where window.title == "AeroSpace Pilot" {
+            for window in NSApp.windows where PilotAppWindow.isMain(window) || window.title == "AeroSpace Pilot" {
                 window.close()
             }
         }
@@ -119,5 +155,23 @@ private struct MenuBarContent: View {
             do { try JSONFiles.write(payload, to: URL(fileURLWithPath: arguments[index + 1])) }
             catch { fputs("Readiness write failed: \(error)\n", stderr) }
         }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        let mainWindows = sender.windows.filter {
+            PilotAppWindow.isMain($0) && ($0.isVisible || $0.isMiniaturized)
+        }
+        guard !mainWindows.isEmpty else {
+            PilotAppWindow.hideFromWindowSwitcher()
+            return true
+        }
+
+        PilotAppWindow.showInWindowSwitcher()
+        for window in mainWindows {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        }
+        sender.activate(ignoringOtherApps: true)
+        return true
     }
 }

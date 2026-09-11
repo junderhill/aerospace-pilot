@@ -286,6 +286,54 @@ import PilotTestSupport
         #expect(await desktop.moves.isEmpty)
     }
 
+    @Test func changedTitleReusesUniqueWindowAlreadyInSavedWorkspace() async throws {
+        let desktop = MemoryDesktop(windows: [window(title: "", workspace: "T")])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        let p = profile([Assignment(id: "editor", bundleID: "test.editor", appName: "Editor",
+                                    workspace: "T", identity: .init(exactTitle: "Old title"))])
+        let snapshot = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(p, snapshot: snapshot)
+        #expect(plan.items[0].action == .alreadyPlaced)
+        #expect(plan.items[0].detail.contains("title changed"))
+        let report = try await engine(desktop, apps).apply(plan)
+        #expect(report.outcomes[0].status == .completed)
+        #expect(await desktop.moves.isEmpty)
+    }
+
+    @Test func duplicateSavedEntriesAcceptTheOnlyWindowAlreadyInTheirWorkspace() async throws {
+        let desktop = MemoryDesktop(windows: [window(title: "", workspace: "S")])
+        let apps = MemoryApplications(desktop: desktop, installed: ["test.editor"])
+        let p = profile([
+            Assignment(id: "first", bundleID: "test.editor", appName: "Editor", workspace: "S", identity: .init(exactTitle: "Old tab A")),
+            Assignment(id: "second", bundleID: "test.editor", appName: "Editor", workspace: "S", identity: .init(exactTitle: "Old tab B"))
+        ])
+        let snapshot = try await desktop.snapshot()
+        let plan = try RestorePlanner().plan(p, snapshot: snapshot)
+        #expect(plan.items.allSatisfy { $0.action == .alreadyPlaced })
+        let report = try await engine(desktop, apps).apply(plan)
+        #expect(report.outcomes.count == 2)
+        #expect(report.outcomes.allSatisfy { $0.status == .completed })
+        #expect(await desktop.moves.isEmpty)
+        #expect(apps.opened.isEmpty)
+    }
+
+    @Test func workspaceFallbackDoesNotGuessOrStealAnotherAssignment() throws {
+        let first = Assignment(id: "first", bundleID: "test.editor", appName: "Editor",
+                               workspace: "T", identity: .init(exactTitle: "First"))
+        let second = Assignment(id: "second", bundleID: "test.editor", appName: "Editor",
+                                workspace: "U", identity: .init(exactTitle: "Second"))
+        let planner = RestorePlanner()
+        let reserved = try planner.plan(profile([first, second]), snapshot: .init(windows: [window(title: "Second", workspace: "T")]))
+        #expect(reserved.items[0].action == .resolve)
+        #expect(reserved.items[1].action == .move)
+        let ambiguous = try planner.plan(profile([first]), snapshot: .init(windows: [
+            window(1, title: "New A", workspace: "T"), window(2, title: "New B", workspace: "T")
+        ]))
+        #expect(ambiguous.items[0].action == .resolve)
+        let elsewhere = try planner.plan(profile([first]), snapshot: .init(windows: [window(title: "New", workspace: "U")]))
+        #expect(elsewhere.items[0].action == .resolve)
+    }
+
     @Test func captureUsesWorkspaceMonitorAndPersistsEmptyWorkspaces() throws {
         let snapshot = DesktopSnapshot(
             windows: [DesktopWindow(id: 1, bundleID: "test.editor", appName: "Editor", title: "Document",
