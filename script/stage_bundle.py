@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import pathlib
 import plistlib
 import shutil
@@ -6,6 +7,9 @@ import subprocess
 import sys
 
 root, binaries = map(pathlib.Path, sys.argv[1:])
+version = os.environ.get('PILOT_VERSION', '0.1.0')
+build_number = os.environ.get('PILOT_BUILD_NUMBER', '1')
+codesign_identity = os.environ.get('PILOT_CODESIGN_IDENTITY', '-')
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)
 for product, name, identity in [
@@ -13,6 +17,8 @@ for product, name, identity in [
     ('PilotWindowFixture', 'Pilot Window Fixture', 'uk.jason.aerospace-pilot.fixture'),
 ]:
     app = dist / f'{name}.app'
+    if app.exists():
+        shutil.rmtree(app)
     executable = app / 'Contents/MacOS' / product
     executable.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(binaries / product, executable)
@@ -30,13 +36,17 @@ for product, name, identity in [
     (app / 'Contents/Info.plist').write_bytes(plistlib.dumps({
         'CFBundleExecutable': product, 'CFBundleIdentifier': identity,
         'CFBundleName': name, 'CFBundleDisplayName': name, 'CFBundlePackageType': 'APPL',
-        'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1.0',
+        'CFBundleVersion': build_number, 'CFBundleShortVersionString': version,
         'LSMinimumSystemVersion': '14.0', 'NSPrincipalClass': 'NSApplication',
         'NSHighResolutionCapable': True,
         **icon_metadata,
         'NSScreenCaptureUsageDescription': 'Show previews of your AeroSpace windows when you request them.',
     }))
-    subprocess.run(['/usr/bin/codesign', '--force', '--sign', '-', '--identifier', identity, str(app)], check=True)
+    sign_command = ['/usr/bin/codesign', '--force', '--sign', codesign_identity, '--identifier', identity]
+    if codesign_identity != '-':
+        sign_command.extend(['--options', 'runtime', '--timestamp'])
+    sign_command.append(str(app))
+    subprocess.run(sign_command, check=True)
 shutil.copy2(binaries / 'pilot', dist / 'pilot')
 shutil.copy2(binaries / 'pilot-desktop-tests', dist / 'pilot-desktop-tests')
 for bundle in binaries.glob('*.bundle'):
