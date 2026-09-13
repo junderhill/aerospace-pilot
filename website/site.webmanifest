@@ -1,0 +1,15 @@
+{
+  "name": "AeroSpace Pilot",
+  "short_name": "Pilot",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#050b13",
+  "theme_color": "#06101c",
+  "icons": [
+    {
+      "src": "assets/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

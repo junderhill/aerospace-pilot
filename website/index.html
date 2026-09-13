@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#06101c">
+    <meta name="description" content="AeroSpace Pilot saves, previews, and restores AeroSpace workspace layouts on macOS.">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="AeroSpace Pilot">
+    <meta property="og:description" content="Put every workspace back in its place.">
+    <meta property="og:url" content="https://junderhill.github.io/aerospace-pilot/">
+    <meta name="twitter:card" content="summary">
+    <title>AeroSpace Pilot — Restore your workspace</title>
+    <link rel="canonical" href="https://junderhill.github.io/aerospace-pilot/">
+    <link rel="icon" href="assets/app-icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="assets/app-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "AeroSpace Pilot",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "macOS 14 or later",
+        "description": "Save, preview, and restore AeroSpace workspace layouts on macOS.",
+        "downloadUrl": "https://github.com/junderhill/aerospace-pilot/releases/latest",
+        "softwareRequirements": "AeroSpace window manager",
+        "url": "https://junderhill.github.io/aerospace-pilot/"
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="AeroSpace Pilot home">
+        <img src="assets/app-icon.png" width="36" height="36" alt="">
+        <span>AeroSpace Pilot</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#install">Install</a>
+        <a class="github-link" href="https://github.com/junderhill/aerospace-pilot">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="route-line" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="hero-copy">
+          <p class="eyebrow">Native macOS companion for AeroSpace</p>
+          <h1>Put every workspace back in its place.</h1>
+          <p class="hero-intro">
+            Save your desktop, inspect every move, and restore apps and workspaces with a plan you can see before it runs.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-button" href="#install">Install with Homebrew</a>
+            <a class="text-link" href="https://github.com/junderhill/aerospace-pilot/releases/latest">View the latest release <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="release-note" aria-label="Release status">
+            <span>Public preview</span>
+            <span>macOS 14+</span>
+            <span>Local-first</span>
+          </div>
+        </div>
+
+        <div class="hero-mark" aria-hidden="true">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="icon-glow"></div>
+          <img src="assets/app-icon.png" width="512" height="512" alt="">
+        </div>
+      </section>
+
+      <section class="capabilities" aria-labelledby="capabilities-heading">
+        <div class="section-heading">
+          <p class="eyebrow">A safer restore loop</p>
+          <h2 id="capabilities-heading">Control without the ceremony.</h2>
+        </div>
+
+        <div class="capability-grid">
+          <article>
+            <span class="step-number">01</span>
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="4" y="6" width="24" height="20" rx="4"></rect>
+              <path d="M4 12h24M11 12v14"></path>
+            </svg>
+            <h3>Capture the layout</h3>
+            <p>Save app windows, AeroSpace workspaces, and monitor assignments as a portable profile.</p>
+          </article>
+          <article>
+            <span class="step-number">02</span>
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M3 16s5-8 13-8 13 8 13 8-5 8-13 8S3 16 3 16Z"></path>
+              <circle cx="16" cy="16" r="3.5"></circle>
+            </svg>
+            <h3>Preview every move</h3>
+            <p>See what will move, open, stay untouched, or need a decision before applying anything.</p>
+          </article>
+          <article>
+            <span class="step-number">03</span>
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <path d="m7 17 6 6L26 8"></path>
+              <path d="M25 16v9a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V10a3 3 0 0 1 3-3h11"></path>
+            </svg>
+            <h3>Restore with confidence</h3>
+            <p>Reuse open windows, place them deliberately, and leave protected applications alone.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="quick-view" id="how-it-works">
+        <div class="quick-view-copy">
+          <p class="eyebrow">The desktop, from anywhere</p>
+          <h2>One shortcut. Every workspace.</h2>
+          <p>
+            Quick View opens on the display under your pointer, so you can search workspaces, scan window previews, and jump straight to the one you need.
+          </p>
+          <div class="key-combination" aria-label="Default keyboard shortcut Control Option Space">
+            <kbd>⌃ Control</kbd><span>+</span><kbd>⌥ Option</kbd><span>+</span><kbd>Space</kbd>
+          </div>
+        </div>
+
+        <ol class="route-steps">
+          <li>
+            <span>1</span>
+            <div><strong>Save</strong><small>Capture a known-good desktop.</small></div>
+          </li>
+          <li>
+            <span>2</span>
+            <div><strong>Check</strong><small>Resolve exceptions in the preview.</small></div>
+          </li>
+          <li>
+            <span>3</span>
+            <div><strong>Restore</strong><small>Apply only the plan you approved.</small></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="privacy-note">
+        <div>
+          <p class="eyebrow">Local by design</p>
+          <h2>Your layout stays yours.</h2>
+        </div>
+        <p>
+          Profiles are human-readable JSON stored on your Mac. There is no account, sync service, or background window capture. Screen previews appear only when you request them and grant macOS permission.
+        </p>
+      </section>
+
+      <section class="install" id="install">
+        <div>
+          <p class="eyebrow">Ready when you are</p>
+          <h2>Install AeroSpace Pilot.</h2>
+          <p>Requires macOS 14 or later and <a href="https://github.com/nikitabobko/AeroSpace">AeroSpace</a>.</p>
+        </div>
+
+        <div class="command-block">
+          <span class="terminal-label">Terminal</span>
+          <code id="install-command">brew install --cask junderhill/aerospace-pilot/aerospace-pilot</code>
+          <button type="button" class="copy-button" data-copy-target="install-command">
+            <span class="copy-label">Copy</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+              <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+            </svg>
+          </button>
+          <p class="copy-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top">
+        <img src="assets/app-icon.png" width="32" height="32" alt="">
+        <span>AeroSpace Pilot</span>
+      </a>
+      <p>Independent companion project for <a href="https://github.com/nikitabobko/AeroSpace">AeroSpace</a>.</p>
+      <a href="https://github.com/junderhill/aerospace-pilot">Source on GitHub <span aria-hidden="true">↗</span></a>
+    </footer>
+
+    <script src="site.js"></script>
+  </body>
+</html>
