@@ -64,6 +64,16 @@ import PilotTestSupport
             .capture(name: "Included", snapshot: snapshot)
         #expect(included.assignments.map(\.bundleID) == ["com.openai.codex", "test.editor"])
     }
+    @Test func pilotIsAlwaysExcludedFromCapturedLayouts() throws {
+        let snapshot = DesktopSnapshot(windows: [
+            window(1, bundle: Protection.pilot, title: "AeroSpace Pilot"),
+            window(2, bundle: "test.editor", title: "Document")
+        ])
+        let profile = try ProfileStore(directory: URL(fileURLWithPath: "/unused"))
+            .capture(name: "Without Pilot", snapshot: snapshot)
+        #expect(profile.assignments.map(\.bundleID) == ["test.editor"])
+        #expect(profile.protectedBundleIDs == [Protection.pilot])
+    }
     @Test func restorePlanSkipsConfiguredExcludedAssignments() throws {
         let assignment = Assignment(id: "chatgpt", bundleID: "com.openai.codex", appName: "ChatGPT", workspace: "C")
         let plan = try RestorePlanner(globalProtections: ["com.openai.codex"]).plan(

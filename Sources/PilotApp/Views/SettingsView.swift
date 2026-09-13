@@ -22,7 +22,7 @@ struct SettingsView: View {
             }
 
             Section("Excluded applications") {
-                Text("Excluded apps are ignored when saving a layout and stay unchanged during restore. Nothing is excluded by default.")
+                Text("Excluded apps are ignored when saving a layout and stay unchanged during restore. AeroSpace Pilot is always excluded so it cannot move or save its own window.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
@@ -74,13 +74,14 @@ struct SettingsView: View {
         for bundleID in settings.excludedBundleIDs where names[bundleID] == nil {
             names[bundleID] = bundleID
         }
+        names[Protection.pilot] = "AeroSpace Pilot"
         return names.map { AppChoice(bundleID: $0.key, name: $0.value) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private func binding(for bundleID: String) -> Binding<Bool> {
         Binding(
-            get: { settings.excludedBundleIDs.contains(bundleID) },
+            get: { settings.effectiveExcludedBundleIDs.contains(bundleID) },
             set: { settings.setExcluded(bundleID, enabled: $0) }
         )
     }
