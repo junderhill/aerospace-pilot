@@ -145,6 +145,7 @@ jobs:
           version="${RELEASE_TAG#v}"
           checksum="$(awk '{print $1}' dist/release/SHA256SUMS.txt)"
           python3 script/render_homebrew_cask.py "$version" "$checksum" homebrew-tap/Casks/aerospace-pilot.rb
+          ruby -c homebrew-tap/Casks/aerospace-pilot.rb
 
           git -C homebrew-tap config user.name "github-actions[bot]"
           git -C homebrew-tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
