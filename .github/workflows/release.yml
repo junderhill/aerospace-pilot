@@ -1,0 +1,157 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish (for example, v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, notarize, and publish
+    runs-on: macos-15
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Validate release configuration
+        env:
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tags must look like v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+
+          missing=()
+          for name in APPLE_APP_PASSWORD APPLE_ID APPLE_TEAM_ID HOMEBREW_TAP_SSH_KEY MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required release secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Run deterministic tests
+        env:
+          PILOT_AEROSPACE_PATH: /not-installed/aerospace
+        run: |
+          ./script/test.sh
+          ./script/test.sh --suite contracts
+
+      - name: Import Developer ID certificate
+        uses: Apple-Actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+
+      - name: Select signing identity
+        id: signing
+        run: |
+          identity="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+          if [[ -z "$identity" ]]; then
+            echo "::error::The imported certificate contains no Developer ID Application identity"
+            exit 1
+          fi
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed universal app
+        env:
+          PILOT_BUILD_NUMBER: ${{ github.run_number }}
+          PILOT_CODESIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
+        run: ./script/package_release.sh "$RELEASE_TAG"
+
+      - name: Notarize and staple app
+        env:
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          archive="dist/release/AeroSpace-Pilot-$version.zip"
+
+          xcrun notarytool submit "$archive" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "dist/AeroSpace Pilot.app"
+          xcrun stapler validate "dist/AeroSpace Pilot.app"
+
+          rm -f "$archive"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "dist/AeroSpace Pilot.app" "$archive"
+          (
+            cd dist/release
+            /usr/bin/shasum -a 256 "AeroSpace-Pilot-$version.zip" > SHA256SUMS.txt
+          )
+          codesign --verify --deep --strict --verbose=2 "dist/AeroSpace Pilot.app"
+          spctl --assess --type execute --verbose=2 "dist/AeroSpace Pilot.app"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          archive="dist/release/AeroSpace-Pilot-$version.zip"
+          checksum="dist/release/SHA256SUMS.txt"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$archive" "$checksum" --clobber
+          else
+            flags=()
+            if [[ "$version" == *-* ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" "$archive" "$checksum" \
+              --verify-tag \
+              --generate-notes \
+              --title "AeroSpace Pilot $version" \
+              "${flags[@]}"
+          fi
+
+      - name: Check out Homebrew tap
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: junderhill/homebrew-aerospace-pilot
+          ref: main
+          path: homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
+
+      - name: Update Homebrew cask
+        run: |
+          version="${RELEASE_TAG#v}"
+          checksum="$(awk '{print $1}' dist/release/SHA256SUMS.txt)"
+          python3 script/render_homebrew_cask.py "$version" "$checksum" homebrew-tap/Casks/aerospace-pilot.rb
+
+          git -C homebrew-tap config user.name "github-actions[bot]"
+          git -C homebrew-tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C homebrew-tap add Casks/aerospace-pilot.rb
+          if git -C homebrew-tap diff --cached --quiet; then
+            echo "Homebrew cask already matches $RELEASE_TAG"
+          else
+            git -C homebrew-tap commit -m "Update AeroSpace Pilot to $version"
+            git -C homebrew-tap push origin HEAD:main
+          fi
