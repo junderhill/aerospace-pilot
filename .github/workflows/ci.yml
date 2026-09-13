@@ -6,7 +6,7 @@ jobs:
   deterministic:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - run: ./script/bootstrap.sh
       - run: ./script/build.sh
       - run: ./script/test.sh
@@ -19,7 +19,7 @@ jobs:
           ./script/verify.sh --phase 3
           result=$?
           if [ "$result" -ne 0 ] && [ "$result" -ne 3 ]; then exit "$result"; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: verification
