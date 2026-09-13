@@ -1,8 +1,19 @@
 # AeroSpace Pilot
 
-Run `./script/build_and_run.sh --verify` to build and open the development app.
+[Website](https://junderhill.github.io/aerospace-pilot/) · [Latest release](https://github.com/junderhill/aerospace-pilot/releases/latest)
 
 An independent macOS companion for AeroSpace. This implementation covers the Phase 1 foundation, Phase 2 CLI/health/capture infrastructure, and Phase 3 profile workflow, including opt-in outside-app cleanup and workspace display restoration. **Desktop certification is still pending.** The cumulative gate reports missing evidence as blocked, never passed.
+
+## Install
+
+AeroSpace Pilot requires macOS 14 or later and [AeroSpace](https://github.com/nikitabobko/AeroSpace).
+
+```sh
+brew install --cask nikitabobko/tap/aerospace
+brew install --cask junderhill/aerospace-pilot/aerospace-pilot
+```
+
+The Homebrew cask is published from the checksum of each signed and notarized GitHub release.
 
 ## Development
 
@@ -15,6 +26,27 @@ An independent macOS companion for AeroSpace. This implementation covers the Pha
 Scripts resolve their own project root, so they work from a different directory and in paths containing spaces. `PILOT_AEROSPACE_PATH` selects an explicit AeroSpace executable. Ordinary tests use fakes and require neither AeroSpace nor GUI permissions. SwiftPM may need to run outside an enclosing tool sandbox so that its own sandbox can start.
 
 `./script/build.sh` builds and stages an ad-hoc-signed app plus `dist/pilot`, the read-only diagnostics CLI, and the controlled desktop fixture/runner. `./script/doctor.sh --desktop` builds and reports connectivity, per-process permission state, displays and installed Work identities. `build_and_run.sh` supports `--verify`, `--debug`, `--logs` and `--telemetry`; it restarts only this checkout's development app.
+
+## Publishing a release
+
+The `Publish release` GitHub Actions workflow runs deterministic tests, builds a universal app, signs and notarizes it, publishes the versioned archive and checksum, then updates the public [Homebrew tap](https://github.com/junderhill/homebrew-aerospace-pilot).
+
+Configure these repository secrets before publishing the first tag:
+
+- `MACOS_CERTIFICATE_P12`: base64-encoded Developer ID Application certificate and private key
+- `MACOS_CERTIFICATE_PASSWORD`: password used when exporting the certificate
+- `APPLE_ID`: Apple Developer account email
+- `APPLE_APP_PASSWORD`: app-specific password for notarization
+- `APPLE_TEAM_ID`: Apple Developer team identifier
+
+The tap's scoped deploy key is stored separately as `HOMEBREW_TAP_SSH_KEY` and is already wired into the workflow. Publish an existing commit by creating and pushing an annotated semantic-version tag:
+
+```sh
+git tag -a v0.1.0 -m "AeroSpace Pilot 0.1.0"
+git push origin v0.1.0
+```
+
+Use `./script/package_release.sh 0.1.0` to create a local ad-hoc-signed release archive for packaging checks. Public releases require the GitHub Actions signing and notarization secrets above.
 
 ## Use profiles
 
