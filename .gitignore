@@ -5,6 +5,12 @@ artifacts/
 .DS_Store
 *.xcuserstate
 __pycache__/
+.env
+.env.*
+!.env.example
+*.cer
+*.mobileprovision
+*.p12
 
 # Local profiles, planning, and desktop review evidence
 /.local/
