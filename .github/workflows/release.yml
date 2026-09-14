@@ -12,7 +12,9 @@ on:
         type: string
 
 permissions:
+  attestations: write
   contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
@@ -20,7 +22,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build, notarize, and publish
+    name: Build, sign, and publish
     runs-on: macos-15
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -33,12 +35,9 @@ jobs:
 
       - name: Validate release configuration
         env:
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
-          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SELF_SIGNED_CERTIFICATE_P12: ${{ secrets.MACOS_SELF_SIGNED_CERTIFICATE_P12 }}
+          MACOS_SELF_SIGNED_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SELF_SIGNED_CERTIFICATE_PASSWORD }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Release tags must look like v1.2.3 or v1.2.3-beta.1"
@@ -46,7 +45,7 @@ jobs:
           fi
 
           missing=()
-          for name in APPLE_APP_PASSWORD APPLE_ID APPLE_TEAM_ID HOMEBREW_TAP_SSH_KEY MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD; do
+          for name in HOMEBREW_TAP_SSH_KEY MACOS_SELF_SIGNED_CERTIFICATE_P12 MACOS_SELF_SIGNED_CERTIFICATE_PASSWORD; do
             if [[ -z "${!name}" ]]; then
               missing+=("$name")
             fi
@@ -63,18 +62,27 @@ jobs:
           ./script/test.sh
           ./script/test.sh --suite contracts
 
-      - name: Import Developer ID certificate
+      - name: Import self-signed code-signing certificate
         uses: Apple-Actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
         with:
-          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
-          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          p12-file-base64: ${{ secrets.MACOS_SELF_SIGNED_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.MACOS_SELF_SIGNED_CERTIFICATE_PASSWORD }}
+
+      - name: Trust self-signed code-signing certificate
+        run: |
+          sudo security add-trusted-cert \
+            -d \
+            -r trustRoot \
+            -p codeSign \
+            -k /Library/Keychains/System.keychain \
+            .github/signing/AeroSpacePilotCodeSigning.pem
 
       - name: Select signing identity
         id: signing
         run: |
-          identity="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+          identity="$(security find-identity -v -p codesigning | sed -n 's/.*"\([^"]*AeroSpace Pilot Code Signing[^"]*\)".*/\1/p' | head -n 1)"
           if [[ -z "$identity" ]]; then
-            echo "::error::The imported certificate contains no Developer ID Application identity"
+            echo "::error::The imported archive contains no AeroSpace Pilot Code Signing identity"
             exit 1
           fi
           echo "identity=$identity" >> "$GITHUB_OUTPUT"
@@ -85,31 +93,21 @@ jobs:
           PILOT_CODESIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
         run: ./script/package_release.sh "$RELEASE_TAG"
 
-      - name: Notarize and staple app
-        env:
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Verify signed universal app
         run: |
-          version="${RELEASE_TAG#v}"
-          archive="dist/release/AeroSpace-Pilot-$version.zip"
+          app="dist/AeroSpace Pilot.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app"
+          architectures="$(lipo -archs "$app/Contents/MacOS/AeroSpacePilot")"
+          [[ "$architectures" == *arm64* && "$architectures" == *x86_64* ]] || {
+            echo "::error::Expected a universal arm64/x86_64 executable, found: $architectures"
+            exit 1
+          }
 
-          xcrun notarytool submit "$archive" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-          xcrun stapler staple "dist/AeroSpace Pilot.app"
-          xcrun stapler validate "dist/AeroSpace Pilot.app"
-
-          rm -f "$archive"
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "dist/AeroSpace Pilot.app" "$archive"
-          (
-            cd dist/release
-            /usr/bin/shasum -a 256 "AeroSpace-Pilot-$version.zip" > SHA256SUMS.txt
-          )
-          codesign --verify --deep --strict --verbose=2 "dist/AeroSpace Pilot.app"
-          spctl --assess --type execute --verbose=2 "dist/AeroSpace Pilot.app"
+      - name: Attest release archive
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/release/AeroSpace-Pilot-*.zip
 
       - name: Publish GitHub release
         env:
@@ -128,6 +126,7 @@ jobs:
             gh release create "$RELEASE_TAG" "$archive" "$checksum" \
               --verify-tag \
               --generate-notes \
+              --notes "Install the precompiled universal app with \`brew install --cask junderhill/aerospace-pilot/aerospace-pilot\`. Xcode is not required." \
               --title "AeroSpace Pilot $version" \
               "${flags[@]}"
           fi

@@ -10,6 +10,7 @@ root, binaries = map(pathlib.Path, sys.argv[1:])
 version = os.environ.get('PILOT_VERSION', '0.1.0')
 build_number = os.environ.get('PILOT_BUILD_NUMBER', '1')
 codesign_identity = os.environ.get('PILOT_CODESIGN_IDENTITY', '-')
+codesign_timestamp = os.environ.get('PILOT_CODESIGN_TIMESTAMP') == '1'
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)
 for product, name, identity in [
@@ -44,7 +45,9 @@ for product, name, identity in [
     }))
     sign_command = ['/usr/bin/codesign', '--force', '--sign', codesign_identity, '--identifier', identity]
     if codesign_identity != '-':
-        sign_command.extend(['--options', 'runtime', '--timestamp'])
+        sign_command.extend(['--options', 'runtime'])
+        if codesign_timestamp:
+            sign_command.append('--timestamp')
     sign_command.append(str(app))
     subprocess.run(sign_command, check=True)
 shutil.copy2(binaries / 'pilot', dist / 'pilot')
