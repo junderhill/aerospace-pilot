@@ -10,10 +10,11 @@ AeroSpace Pilot requires macOS 14 or later and [AeroSpace](https://github.com/ni
 
 ```sh
 brew install --cask nikitabobko/tap/aerospace
+brew trust --cask junderhill/aerospace-pilot/aerospace-pilot
 brew install --cask junderhill/aerospace-pilot/aerospace-pilot
 ```
 
-Homebrew downloads a precompiled universal app from GitHub, verifies its release checksum, and removes the quarantine attribute during installation. Xcode and the Command Line Tools are not required. The app uses a stable project-owned signing identity rather than Apple notarization; a direct browser download will therefore require macOS **Open Anyway** approval.
+The one-time `brew trust --cask` command authorizes only the AeroSpace Pilot cask to run its quarantine-removal step. Homebrew then downloads a precompiled universal app from GitHub and verifies its release checksum. Xcode and the Command Line Tools are not required. The app uses a stable project-owned signing identity rather than Apple notarization; a direct browser download will therefore require macOS **Open Anyway** approval.
 
 ## Development
 

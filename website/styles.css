@@ -582,7 +582,7 @@ kbd {
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 0.82rem;
   line-height: 1.7;
-  white-space: nowrap;
+  white-space: pre;
   scrollbar-width: thin;
 }
 

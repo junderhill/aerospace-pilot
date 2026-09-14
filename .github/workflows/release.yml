@@ -126,7 +126,7 @@ jobs:
             gh release create "$RELEASE_TAG" "$archive" "$checksum" \
               --verify-tag \
               --generate-notes \
-              --notes "Install the precompiled universal app with \`brew install --cask junderhill/aerospace-pilot/aerospace-pilot\`. Xcode is not required." \
+              --notes "Install the precompiled universal app by running \`brew trust --cask junderhill/aerospace-pilot/aerospace-pilot\` once, then \`brew install --cask junderhill/aerospace-pilot/aerospace-pilot\`. Xcode is not required." \
               --title "AeroSpace Pilot $version" \
               "${flags[@]}"
           fi

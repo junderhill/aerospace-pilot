@@ -37,6 +37,7 @@ def render(version: str, sha256: str) -> str:
 
   caveats <<~EOS
     AeroSpace Pilot requires AeroSpace. Install it with:
+      brew trust --cask nikitabobko/tap/aerospace
       brew install --cask nikitabobko/tap/aerospace
   EOS
 end
