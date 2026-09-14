@@ -13,7 +13,7 @@ brew install --cask nikitabobko/tap/aerospace
 brew install --cask junderhill/aerospace-pilot/aerospace-pilot
 ```
 
-The Homebrew cask is published from the checksum of each signed and notarized GitHub release.
+Homebrew downloads a precompiled universal app from GitHub, verifies its release checksum, and removes the quarantine attribute during installation. Xcode and the Command Line Tools are not required. The app uses a stable project-owned signing identity rather than Apple notarization; a direct browser download will therefore require macOS **Open Anyway** approval.
 
 ## Development
 
@@ -29,15 +29,12 @@ Scripts resolve their own project root, so they work from a different directory 
 
 ## Publishing a release
 
-The `Publish release` GitHub Actions workflow runs deterministic tests, builds a universal app, signs and notarizes it, publishes the versioned archive and checksum, then updates the public [Homebrew tap](https://github.com/junderhill/homebrew-aerospace-pilot).
+The `Publish release` GitHub Actions workflow runs deterministic tests, builds a universal app, signs it with the project's stable self-signed identity, publishes the versioned archive and checksum with GitHub build provenance, then updates the public [Homebrew tap](https://github.com/junderhill/homebrew-aerospace-pilot).
 
 Configure these repository secrets before publishing the first tag:
 
-- `MACOS_CERTIFICATE_P12`: base64-encoded Developer ID Application certificate and private key
-- `MACOS_CERTIFICATE_PASSWORD`: password used when exporting the certificate
-- `APPLE_ID`: Apple Developer account email
-- `APPLE_APP_PASSWORD`: app-specific password for notarization
-- `APPLE_TEAM_ID`: Apple Developer team identifier
+- `MACOS_SELF_SIGNED_CERTIFICATE_P12`: base64-encoded project signing certificate and private key
+- `MACOS_SELF_SIGNED_CERTIFICATE_PASSWORD`: password used when exporting the certificate
 
 The tap's scoped deploy key is stored separately as `HOMEBREW_TAP_SSH_KEY` and is already wired into the workflow. Publish an existing commit by creating and pushing an annotated semantic-version tag:
 
@@ -46,7 +43,7 @@ git tag -a v0.1.0 -m "AeroSpace Pilot 0.1.0"
 git push origin v0.1.0
 ```
 
-Use `./script/package_release.sh 0.1.0` to create a local ad-hoc-signed release archive for packaging checks. Public releases require the GitHub Actions signing and notarization secrets above.
+Use `./script/package_release.sh 0.1.0` to create a local ad-hoc-signed release archive for packaging checks. Public releases use the self-signed identity stored in GitHub Actions; no paid Apple Developer account is required.
 
 ## Use profiles
 
