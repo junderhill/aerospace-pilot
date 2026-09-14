@@ -29,6 +29,10 @@ def render(version: str, sha256: str) -> str:
 
   depends_on macos: :sonoma
 
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "{{{{appdir}}}}/AeroSpace Pilot.app"], must_succeed: false
+  end
+
   app "AeroSpace Pilot.app"
 
   caveats <<~EOS
