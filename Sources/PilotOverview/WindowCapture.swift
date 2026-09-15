@@ -107,13 +107,16 @@ public struct Thumbnail: Sendable {
             let pending = CaptureDeadline(continuation)
             Task {
                 do {
-                    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                    pending.finish(.success(CaptureContent(content: content)))
+                    pending.finish(.success(try await Self.shareableContent()))
                 } catch {
                     pending.finish(.failure(error))
                 }
             }
         }
+    }
+    private nonisolated static func shareableContent() async throws -> CaptureContent {
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        return CaptureContent(content: content)
     }
     private func timedImage(filter: SCContentFilter, configuration: SCStreamConfiguration) async throws -> CGImage {
         try await withCheckedThrowingContinuation { continuation in
