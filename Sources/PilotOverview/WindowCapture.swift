@@ -136,13 +136,13 @@ private struct CaptureContent: @unchecked Sendable {
 }
 
 /// ScreenCaptureKit may return after the deadline; resume a continuation at most once.
-@MainActor private final class CaptureDeadline<Value: Sendable> {
+@MainActor final class CaptureDeadline<Value: Sendable> {
     private var continuation: CheckedContinuation<Value, any Error>?
     private var timeout: Task<Void, Never>?
-    init(_ continuation: CheckedContinuation<Value, any Error>) {
+    init(_ continuation: CheckedContinuation<Value, any Error>, after duration: Duration = .seconds(3)) {
         self.continuation = continuation
         timeout = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            do { try await Task.sleep(for: duration) } catch { return }
             self?.finish(.failure(PilotError.unavailable("ScreenCaptureKit exceeded its 3-second deadline.")))
         }
     }
