@@ -105,11 +105,12 @@ public struct Thumbnail: Sendable {
     private func timedShareableContent() async throws -> CaptureContent {
         try await withCheckedThrowingContinuation { continuation in
             let pending = CaptureDeadline(continuation)
-            SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { content, error in
-                let transfer = content.map(CaptureContent.init)
-                Task { @MainActor in
-                    if let transfer { pending.finish(.success(transfer)) }
-                    else { pending.finish(.failure(error ?? PilotError.unavailable("No shareable content."))) }
+            Task {
+                do {
+                    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                    pending.finish(.success(CaptureContent(content: content)))
+                } catch {
+                    pending.finish(.failure(error))
                 }
             }
         }
@@ -117,23 +118,24 @@ public struct Thumbnail: Sendable {
     private func timedImage(filter: SCContentFilter, configuration: SCStreamConfiguration) async throws -> CGImage {
         try await withCheckedThrowingContinuation { continuation in
             let pending = CaptureDeadline(continuation)
-            SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) { image, error in
-                Task { @MainActor in
-                    if let image { pending.finish(.success(image)) }
-                    else { pending.finish(.failure(error ?? PilotError.unavailable("No captured image."))) }
+            Task {
+                do {
+                    let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+                    pending.finish(.success(image))
+                } catch {
+                    pending.finish(.failure(error))
                 }
             }
         }
     }
 }
 
-// ScreenCaptureKit returns an immutable snapshot through a pre-concurrency ObjC API.
-// Transfer that snapshot once; all consumption remains confined to the main actor.
+// Keep the ScreenCaptureKit snapshot confined to the main actor after the async call.
 private struct CaptureContent: @unchecked Sendable {
     let content: SCShareableContent
 }
 
-/// The callback may arrive after the deadline; resume a continuation at most once.
+/// ScreenCaptureKit may return after the deadline; resume a continuation at most once.
 @MainActor private final class CaptureDeadline<Value: Sendable> {
     private var continuation: CheckedContinuation<Value, any Error>?
     private var timeout: Task<Void, Never>?
